@@ -1,0 +1,37 @@
+from __future__ import annotations
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class Identity:
+    id: str
+    name: str
+    groups: frozenset[str]
+    role: str
+
+
+@dataclass(frozen=True)
+class Doc:
+    id: str
+    source: str  # slack | confluence | jira | drive
+    title: str
+    text: str
+    acl: frozenset[str]  # 可读该文档的组；空集 = 无人可读（未知即拒绝）
+
+
+@dataclass(frozen=True)
+class Fact:
+    """受限事实：继承来源文档 ACL，只供结论检查器使用，永不进入生成上下文。"""
+    id: str
+    source_doc: str
+    acl: frozenset[str]
+    statement: str
+    keywords: tuple[str, ...] = ()
+
+
+@dataclass
+class Answer:
+    text: str
+    citations: list[str] = field(default_factory=list)  # doc ids
+    degraded: bool = False
+    data_source: str = "fake"  # UI 必须展示
