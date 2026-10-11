@@ -4,3 +4,8 @@ __pycache__/
 node_modules/
 .next/
 *.pyc
+*.tsbuildinfo
+.runtime/
+.env.local
+.env.*
+!.env.example

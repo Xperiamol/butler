@@ -1,0 +1,76 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: butler
+      POSTGRES_DB: butler
+      POSTGRES_PASSWORD: ${BUTLER_DB_PASSWORD:?Set a random hexadecimal database password}
+    volumes: ["database:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U butler -d butler"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  api:
+    build: {context: .., dockerfile: services/api/Dockerfile}
+    restart: unless-stopped
+    environment:
+      BUTLER_MODE: enterprise
+      DATABASE_URL: postgresql://butler:${BUTLER_DB_PASSWORD}@db:5432/butler
+      BUTLER_INTERNAL_TOKEN: ${BUTLER_INTERNAL_TOKEN:?Set a random 32+ character internal token}
+      BUTLER_AUTH_MODE: ${BUTLER_AUTH_MODE:-local}
+      BUTLER_ADMIN_USERNAME: ${BUTLER_ADMIN_USERNAME:-}
+      BUTLER_ADMIN_PASSWORD: ${BUTLER_ADMIN_PASSWORD:-}
+      BUTLER_OIDC_ISSUER: ${BUTLER_OIDC_ISSUER:-}
+      BUTLER_BOOTSTRAP_ADMIN_SUB: ${BUTLER_BOOTSTRAP_ADMIN_SUB:-}
+      HUNYUAN_API_KEY: ${HUNYUAN_API_KEY:-}
+      HUNYUAN_BASE_URL: ${HUNYUAN_BASE_URL:-https://api.hunyuan.cloud.tencent.com/v1}
+    depends_on:
+      db: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+  web:
+    build: {context: .., dockerfile: apps/web/Dockerfile}
+    restart: unless-stopped
+    environment:
+      BUTLER_MODE: enterprise
+      BUTLER_API: http://api:8000
+      BUTLER_DEMO_API: http://demo:8000
+      BUTLER_PUBLIC_URL: ${BUTLER_PUBLIC_URL:?Set the public HTTPS origin}
+      BUTLER_SESSION_SECRET: ${BUTLER_SESSION_SECRET:?Set a random 32+ character session secret}
+      BUTLER_INTERNAL_TOKEN: ${BUTLER_INTERNAL_TOKEN}
+      BUTLER_AUTH_MODE: ${BUTLER_AUTH_MODE:-local}
+      BUTLER_OIDC_ISSUER: ${BUTLER_OIDC_ISSUER:-}
+      BUTLER_OIDC_CLIENT_ID: ${BUTLER_OIDC_CLIENT_ID:-}
+      BUTLER_OIDC_CLIENT_SECRET: ${BUTLER_OIDC_CLIENT_SECRET:-}
+      BUTLER_OIDC_CLIENT_AUTH_METHOD: ${BUTLER_OIDC_CLIENT_AUTH_METHOD:-client_secret_basic}
+    depends_on:
+      api: {condition: service_healthy}
+      demo: {condition: service_healthy}
+  demo:
+    build: {context: .., dockerfile: services/api/Dockerfile}
+    restart: unless-stopped
+    environment:
+      BUTLER_MODE: demo
+      BUTLER_DEMO_DATABASE_URL: "sqlite:///:memory:"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+  edge:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      BUTLER_DOMAIN: ${BUTLER_DOMAIN:?Set the public hostname without https}
+    ports: ["80:80", "443:443"]
+    volumes: ["./Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data", "caddy_config:/config"]
+    depends_on: [web]
+volumes:
+  database:
+  caddy_data:
+  caddy_config:

@@ -1,4 +1,5 @@
 """追加式哈希链。能发现篡改，不能阻止篡改——所以要把签名检查点存到库外（COS）。"""
+from __future__ import annotations
 import hashlib
 import json
 import time

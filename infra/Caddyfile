@@ -1,0 +1,14 @@
+{$BUTLER_DOMAIN} {
+    encode zstd gzip
+    request_body {
+        max_size 2MB
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options DENY
+        -Server
+    }
+    reverse_proxy web:3000
+}

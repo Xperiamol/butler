@@ -22,4 +22,7 @@ def restricted_facts(identity: Identity, facts: list[Fact]) -> list[Fact]:
 
 def check(identity: Identity, answer: str, facts: list[Fact], judge: Judge) -> list[Fact]:
     """返回被答案触及的受限事实（空 = 通过）。"""
-    return [f for f in restricted_facts(identity, facts) if judge.entails(answer, f)]
+    candidates = restricted_facts(identity, facts)
+    if candidates and hasattr(judge, "entails_many"):
+        return judge.entails_many(answer, candidates)
+    return [f for f in candidates if judge.entails(answer, f)]

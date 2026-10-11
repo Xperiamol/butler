@@ -34,4 +34,7 @@ class Answer:
     text: str
     citations: list[str] = field(default_factory=list)  # doc ids
     degraded: bool = False
+    blocked_facts: list[str] = field(default_factory=list)  # 只给审计和演示对比用，不返回给提问者
+    latency_ms: float = 0.0
+    guard_ms: float = 0.0  # 结论检查额外耗时
     data_source: str = "fake"  # UI 必须展示

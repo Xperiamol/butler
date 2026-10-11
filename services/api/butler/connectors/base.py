@@ -4,6 +4,7 @@
 - 拿不到权限信息 ⇒ acl 返回空集合（即拒绝），绝不能默认放行。
 - 适配器只负责“读”，不做任何权限判断；判断都在 acl/policy.py。
 """
+from __future__ import annotations
 from typing import Iterable, Protocol
 
 from ..models import Doc
