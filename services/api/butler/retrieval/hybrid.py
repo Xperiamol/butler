@@ -8,6 +8,7 @@ pgvector 的 ANN 过滤会影响返回数量（见 docs/implementation-audit.md�
 """
 from __future__ import annotations
 import math
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -144,14 +145,20 @@ class HybridStore:
     embedder: Embedder
     pending: dict[str, dict] = field(default_factory=dict)   # 索引滞后的文档正文，现场切块、只走词法
     history: dict[str, str] = field(default_factory=dict)    # 会话历史引用过的文档正文
+    as_of: float = 0.0                # 快照时间：同步来的文档权限复核过期后视为不可读（权限接口失败 ⇒ 拒绝）
     last_debug: dict = field(default_factory=dict)
     quarantine: bool = True   # 评测里用来关掉“入库隔离”做对照
 
     def _doc(self, m: dict, text: str = "") -> Doc:
         return Doc(m["id"], m["source"], m["title"], text, frozenset(m["acl"]))
 
+    def _readable(self, identity: Identity, m: dict) -> bool:
+        if m.get("fresh_until") is not None and m["fresh_until"] < self.as_of:
+            return False
+        return can_read(identity, self._doc(m))
+
     def visible(self, identity: Identity) -> list[Doc]:
-        return [self._doc(m) for m in self.metas if can_read(identity, self._doc(m))]
+        return [self._doc(m) for m in self.metas if self._readable(identity, m)]
 
     def get_many(self, ids: list[str]) -> list[Doc]:
         by = {m["id"]: m for m in self.metas}
@@ -160,7 +167,7 @@ class HybridStore:
     # ---- 检索 ----
     def search(self, identity: Identity, query: str, k: int = MAX_DOCS) -> list[Doc]:
         by = {m["id"]: m for m in self.metas}
-        vis = {m["id"]: m for m in self.metas if can_read(identity, self._doc(m))}      # 先过滤
+        vis = {m["id"]: m for m in self.metas if self._readable(identity, m)}      # 先过滤
         fresh = frozenset(d for d, m in vis.items() if self.index.has(d, m["content_hash"]))
         lag = [d for d in vis if d not in fresh]
         chunks, rows = self.index.chunks, self.index.view(fresh, self.quarantine).rows
@@ -244,13 +251,14 @@ class HybridStore:
 
 def build_store(tx, embedder: Embedder, cache: IndexCache, history_ids: list[str] = ()) -> HybridStore:
     """在读事务内取一份快照：元数据（不含正文）、块索引，以及滞后文档/会话历史需要的正文。"""
-    metas = [{"id": r.id, "source": r.source, "title": r.title, "acl": r.acl, "content_hash": r.content_hash}
+    metas = [{"id": r.id, "source": r.source, "title": r.title, "acl": r.acl or [], "content_hash": r.content_hash,
+              "fresh_until": r.fresh_until}
              for r in tx.connection.execute(select(D.documents.c.id, D.documents.c.source, D.documents.c.content_hash,
-                                                   D.documents.c.title, D.documents.c.acl))]
+                                                   D.documents.c.title, D.documents.c.acl, D.documents.c.fresh_until))]
     for m in metas:
         if not m["content_hash"]:  # 旧数据没有哈希：用正文现算
             m["content_hash"] = doc_hash(tx.get("document", m["id"]))
     index = cache.get(tx, embedder)
     pending = {m["id"]: tx.get("document", m["id"]) for m in metas if not index.has(m["id"], m["content_hash"])}
     history = {i: tx.get("document", i)["text"] for i in history_ids if tx.get("document", i)}
-    return HybridStore(metas, index, embedder, pending, history)
+    return HybridStore(metas, index, embedder, pending, history, as_of=time.time())

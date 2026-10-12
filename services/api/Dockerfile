@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app/services/api
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 COPY services/api/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY services/api/butler ./butler

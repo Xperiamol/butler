@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 
 MODEL_PATH = Path(__file__).parent / "models" / "injection-v1.json.gz"
-WINDOW, STRIDE = 600, 300
+WINDOW, STRIDE = 700, 500
 _ZW = re.compile("[​-‏⁠﻿‪-‮]")
 _LEET = str.maketrans("013457@$", "oieastas")
 _SPACED = re.compile(r"\b(?:[a-z] ){3,}[a-z]\b")

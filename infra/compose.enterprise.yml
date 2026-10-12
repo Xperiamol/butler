@@ -33,6 +33,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
+  worker:
+    build: {context: .., dockerfile: services/api/Dockerfile}
+    restart: unless-stopped
+    command: ["python", "-m", "butler.workers.run", "--interval", "30"]
+    environment:
+      BUTLER_MODE: enterprise
+      DATABASE_URL: postgresql://butler:${BUTLER_DB_PASSWORD}@db:5432/butler
+      BUTLER_INTERNAL_TOKEN: ${BUTLER_INTERNAL_TOKEN}
+      BUTLER_AUTH_MODE: ${BUTLER_AUTH_MODE:-local}
+      HUNYUAN_API_KEY: ${HUNYUAN_API_KEY:-}
+      HUNYUAN_BASE_URL: ${HUNYUAN_BASE_URL:-https://api.hunyuan.cloud.tencent.com/v1}
+      BUTLER_SYNC_DIR: /app/.runtime/sync
+    volumes: ["sync:/app/.runtime/sync"]
+    depends_on:
+      db: {condition: service_healthy}
   web:
     build: {context: .., dockerfile: apps/web/Dockerfile}
     restart: unless-stopped
@@ -71,6 +86,7 @@ services:
     volumes: ["./Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data", "caddy_config:/config"]
     depends_on: [web]
 volumes:
+  sync:
   database:
   caddy_data:
   caddy_config:

@@ -284,3 +284,43 @@ def test_embedding_outage_does_not_fail_import_and_doc_is_still_searchable(db, m
     assert "late" in [c["id"] for c in ask("alice", "late", "访客停车证怎么领？").json()["citations"]]  # 索引滞后时词法兜底
     assert client.post("/workspace/knowledge/reindex", headers=headers()).json()["ok"]
     assert client.post("/workspace/knowledge/reindex", headers=headers("ken")).status_code == 403
+
+
+def test_git_sync_end_to_end_through_the_api_including_revocation(db, tmp_path, monkeypatch):
+    import subprocess
+    monkeypatch.setenv("BUTLER_ALLOW_LOCAL_GIT", "1")
+    monkeypatch.setenv("BUTLER_SYNC_DIR", str(tmp_path / "sync"))
+    repo = tmp_path / "origin"
+    (repo / "hr").mkdir(parents=True)
+
+    def git(*a):
+        subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", *a], check=True, capture_output=True)
+
+    git("init", "-q", "-b", "main")
+    (repo / "hr" / "leave.md").write_text("# Leave policy\n\nEmployees receive twenty-five vacation days per year.\n")
+    git("add", "-A"), git("commit", "-q", "-m", "init")
+
+    def config(principals):
+        return {"connector": {"type": "git", "name": "wiki", "location": str(repo), "branch": "main",
+                              "rules": [{"prefix": "", "principals": principals}]},
+                "principal_map": {"staff": ["eng"], "contractor": ["contractors"]}, "acl_ttl_seconds": 3600}
+
+    assert client.put("/workspace/sync/config", headers=headers("ken"), json=config(["staff"])).status_code == 403
+    bad = config(["staff"])
+    bad["connector"]["location"] = "ssh://example.com/x.git"
+    assert client.put("/workspace/sync/config", headers=headers(), json=bad).status_code == 422
+    assert client.put("/workspace/sync/config", headers=headers(), json=config(["staff"])).status_code == 200
+    run = client.post("/workspace/sync/run", headers=headers()).json()
+    assert run["processed"]["done"] == 1
+    q = "How many vacation days do employees receive per year?"
+    assert [c["id"] for c in ask("alice", "s1", q).json()["citations"]] == ["wiki:hr/leave.md"]
+    assert ask("ken", "s1", q).json()["citations"] == []
+    status = client.get("/workspace/sync/status", headers=headers()).json()
+    assert status["documents"] == 1 and status["data_source"] == "real" and status["queue"]["by_status"]["done"] == 1
+    # 来源上撤权：只有承包商可读 → 对账发现并生效，Alice 立刻拿不到，旧会话作废
+    assert client.put("/workspace/sync/config", headers=headers(), json=config(["contractor"])).status_code == 200
+    assert client.post("/workspace/sync/run", headers=headers()).json()["reconcile"]["queued"] == 1
+    assert ask("alice", "s2", q).json()["citations"] == []
+    assert client.get("/workspace/conversations/s1", headers=headers("alice")).json()["stale"] is True
+    with db.transaction() as tx:
+        assert any(e["payload"].get("event") == "sync.acl_changed" for e in tx.all("audit_entry"))

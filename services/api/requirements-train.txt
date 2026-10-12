@@ -1,0 +1,4 @@
+-r requirements.txt
+# 仅训练/评估提示注入分类器时需要；运行时推理不依赖它们
+scikit-learn>=1.4
+scipy>=1.11

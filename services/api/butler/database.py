@@ -22,6 +22,7 @@ records = Table("workspace_records", metadata,
 documents = Table("documents", metadata,
                   Column("id", String(256), primary_key=True), Column("source", String(32), index=True),
                   Column("content_hash", String(64)), Column("title", String(500)), Column("acl", JSON),
+                  Column("fresh_until", Float),   # 平台同步来的文档：权限复核有效期，过期即视为不可读
                   Column("data", JSON, nullable=False))
 facts = Table("facts", metadata,
               Column("id", String(256), primary_key=True), Column("source_doc", String(256), index=True),
@@ -58,7 +59,8 @@ sync_jobs = Table("sync_jobs", metadata,
 # kind -> (表, 从记录中取出索引列的函数)
 TYPED = {
     "document": (documents, lambda d: {"source": d.get("source"), "content_hash": d.get("content_hash"),
-                                             "title": d.get("title"), "acl": d.get("acl")}),
+                                             "title": d.get("title"), "acl": d.get("acl"),
+                                             "fresh_until": (d.get("sync") or {}).get("acl_fresh_until")}),
     "fact": (facts, lambda d: {"source_doc": d.get("source_doc")}),
     "member": (members, lambda d: {"active": bool(d.get("active"))}),
     "conversation": (conversations, lambda d: {"owner": d.get("owner"), "updated": d.get("updated", 0.0)}),

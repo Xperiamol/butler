@@ -20,6 +20,8 @@ from .answer.remote import ModelFailure, RemoteJudge, RemoteModel
 from .answer.session import Session
 from .audit.chain import GENESIS, _h, verify
 from .audit.checkpoint import sign_checkpoint
+from .audit.persistent import PersistentAudit
+from .knowledge import KnowledgeError, delete_document, text_hash as _text_hash, upsert_documents
 from .connectors.fake import load_world
 from .database import Database
 from .models import Doc, Fact, Identity
@@ -124,8 +126,10 @@ def visible_docs(tx, who):
     """可见文档的元数据（不含正文）：状态页、审计范围、来源列表都不需要把全部正文读出来。"""
     from sqlalchemy import select
     from . import database as D
-    return [Doc(r.id, r.source, r.title, "", frozenset(r.acl)) for r in tx.connection.execute(
-        select(D.documents.c.id, D.documents.c.source, D.documents.c.title, D.documents.c.acl)) if can_read(who, Doc(r.id, r.source, r.title, "", frozenset(r.acl)))]
+    now = time.time()
+    docs = [(r.fresh_until, Doc(r.id, r.source, r.title, "", frozenset(r.acl or []))) for r in tx.connection.execute(
+        select(D.documents.c.id, D.documents.c.source, D.documents.c.title, D.documents.c.acl, D.documents.c.fresh_until))]
+    return [d for fresh, d in docs if (fresh is None or fresh >= now) and can_read(who, d)]
 
 
 def reindex(ids=None):
@@ -231,23 +235,6 @@ def cite(docs):
             item["heading"] = d.heading
         out.append(item)
     return out
-
-
-class PersistentAudit:
-    def __init__(self, tx):
-        self.tx = tx
-        self.head = tx.get("meta", "audit_head")
-
-    def append(self, payload):
-        payload = {**payload, "ts": payload.get("ts", time.time())}
-        entry = {"prev_hash": self.head["hash"], "payload": payload, "hash": _h(self.head["hash"], payload)}
-        self.tx.put("audit_entry", f"{self.head['count']:020d}", entry)
-        self.head = {"hash": entry["hash"], "count": self.head["count"] + 1}
-        self.tx.put("meta", "audit_head", self.head)
-        return entry
-
-    def checkpoint(self):
-        return self.head["hash"]
 
 
 @router.post("/provision")
@@ -482,43 +469,76 @@ def knowledge(who=Depends(admin)):
 def knowledge_import(body: ImportBody, who=Depends(admin)):
     with database.transaction() as tx:
         who = checked(tx, who, ADMIN_ROLES)
-        docs = {d["id"]: d for d in tx.all("document")}
         if len({d.id for d in body.documents}) != len(body.documents) or len({f.id for f in body.facts}) != len(body.facts):
             raise HTTPException(422, "同一次导入不能包含重复编号。")
-        changed_docs: set[str] = set()
-        for doc in body.documents:
-            data = doc.model_dump()
-            data["acl"] = sorted({g.strip() for g in doc.acl if g.strip()})
-            if not data["acl"]:
-                raise HTTPException(422, "资料必须设置可读权限组。")
-            data["content_hash"] = text_hash(doc.text)
-            old = docs.get(doc.id)
-            if old and (old.get("content_hash") or text_hash(old["text"])) != data["content_hash"]:
-                changed_docs.add(doc.id)
-            docs[doc.id] = data
-            tx.put("document", doc.id, data)
-        supplied = {f.id for f in body.facts}
-        for fact in tx.all("fact"):
-            # 正文已变：旧版本派生的事实整体失效，只保留本次重新登记的
-            if fact["source_doc"] in changed_docs and fact["id"] not in supplied:
-                tx.delete("fact", fact["id"])
-        for fact in body.facts:
-            if fact.source_doc not in docs:
-                raise HTTPException(422, "受限事实必须关联已有资料。")
-            if any(pid not in docs for pid in fact.premises):
-                raise HTTPException(422, "前提资料必须是已有资料。")
-            tx.put("fact", fact.id, {**fact.model_dump(), "acl": docs[fact.source_doc]["acl"], "keywords": [],
-                                 "content_hash": docs[fact.source_doc]["content_hash"]})
-        # Updating a source ACL must also update all inherited fact ACLs.
-        for fact in tx.all("fact"):
-            if fact["source_doc"] in docs:
-                tx.put("fact", fact["id"], {**fact, "acl": docs[fact["source_doc"]]["acl"]})
-        rev = tx.get("meta", "revision")["value"] + 1
-        tx.put("meta", "revision", {"value": rev})
+        try:
+            result = upsert_documents(tx, [d.model_dump() for d in body.documents], [f.model_dump() for f in body.facts])
+        except KnowledgeError as error:
+            raise HTTPException(422, str(error))
         PersistentAudit(tx).append({"event": "knowledge.imported", "user": who.id, "count": len(body.documents)})
     stats = reindex([d.id for d in body.documents])
-    return {"ok": True, "documents": len(body.documents), "facts": len(body.facts), "revision": rev,
+    return {"ok": True, "documents": len(body.documents), "facts": len(body.facts), "revision": result["revision"],
             "index": "pending" if stats is None else {"chunks": stats.chunks, "embedded": stats.embedded}}
+
+
+class RuleBody(StrictBody):
+    prefix: str = Field(default="", max_length=200)
+    principals: list[str] = Field(max_length=50)
+
+
+class ConnectorBody(StrictBody):
+    type: Literal["git"] = "git"
+    name: str = Field(pattern=r"^[a-z][a-z0-9-]{0,30}$")
+    location: str = Field(min_length=1, max_length=500)
+    branch: str = Field(default="main", pattern=r"^[\w./-]{1,100}$")
+    rules: list[RuleBody] = Field(max_length=200)
+
+
+class SyncConfigBody(StrictBody):
+    connector: ConnectorBody
+    principal_map: dict[str, list[str]] = Field(default_factory=dict, max_length=500)
+    acl_ttl_seconds: int = Field(default=3600, ge=60, le=86400)
+
+
+@router.put("/sync/config")
+def sync_config_put(body: SyncConfigBody, who=Depends(admin)):
+    from .workers.factory import build_connector
+    cfg = body.model_dump()
+    try:
+        build_connector(cfg["connector"])   # 地址/分支校验；https 以外只有显式放开本地路径时才允许
+    except Exception:
+        raise HTTPException(422, "连接器地址或分支不合法。")
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+        tx.put("sync_config", "main", cfg)
+        PersistentAudit(tx).append({"event": "sync.configured", "user": who.id, "connector": body.connector.name})
+    return {"ok": True}
+
+
+@router.get("/sync/status")
+def sync_status(who=Depends(admin)):
+    from .workers import queue
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+        cfg = tx.get("sync_config", "main")
+        synced = [d for d in tx.all("document") if d.get("sync")]
+        fresh = [d["sync"]["acl_fresh_until"] for d in synced]
+        return {"configured": cfg is not None, "connector": cfg["connector"]["name"] if cfg else None,
+                "data_source": "real" if cfg else None, "documents": len(synced),
+                "acl_oldest_fresh_until": min(fresh) if fresh else None,
+                "queue": queue.stats(tx), "ts": time.time()}
+
+
+@router.post("/sync/run")
+def sync_run(who=Depends(admin)):
+    """手动触发一轮：拉取 → 对账 → 处理队列。生产里由 worker 进程定期做同样的事。"""
+    from .workers.run import tick
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+    out = tick(database, embedder_for, 0)
+    with database.transaction() as tx:
+        PersistentAudit(tx).append({"event": "sync.run", "user": who.id})
+    return out
 
 
 @router.post("/knowledge/reindex")
