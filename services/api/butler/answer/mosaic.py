@@ -35,6 +35,11 @@ def restricted_facts(identity: Identity, facts: list[Fact]) -> list[Fact]:
     return [f for f in facts if not can_read(identity, f)]
 
 
+def premise_hits(identity: Identity, facts: list[Fact], exposed_docs: set[str]) -> list[Fact]:
+    """依赖闭包检查：某条受限结论的全部前提资料都已（或即将）交到提问者手里。"""
+    return [f for f in restricted_facts(identity, facts) if f.premises and set(f.premises) <= exposed_docs]
+
+
 def _grams(text: str) -> set[str]:
     out: set[str] = set()
     for chunk in re.sub(r"[\s\W_]+", " ", text.lower()).split():

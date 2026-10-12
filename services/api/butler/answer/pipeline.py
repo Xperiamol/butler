@@ -8,7 +8,7 @@ from ..audit.chain import AuditLog
 from ..models import Answer, Doc, Fact, Identity
 from ..retrieval.store import Store
 from .citations import verify_citations
-from .mosaic import GuardBudgetExceeded, Judge, check
+from .mosaic import GuardBudgetExceeded, Judge, check, premise_hits
 from .session import Session
 
 DEGRADED_PREFIX = "以下只列出你有权查看的事实，不做进一步推断：\n"
@@ -66,6 +66,9 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
     status, hits, guard_ms, cited = "answered", [], 0.0, [d.id for d in context]
     if not docs and not history:
         text, status, cited = NO_EVIDENCE, "no_evidence", []
+    elif guard and (chain := premise_hits(identity, all_facts, {d.id for d in context} | set(session.doc_ids if session else []))):
+        # 结论的全部前提都将交到用户手里：不管模型怎么措辞，这一步都不放行，也不调用模型
+        hits, text, status, cited = chain, SAFE_REFUSAL, "refused", []
     else:
         draft = generate(question, context)
         g0 = time.perf_counter()

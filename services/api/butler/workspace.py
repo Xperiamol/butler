@@ -75,6 +75,7 @@ class FactBody(StrictBody):
     id: str = Field(min_length=1, max_length=128, pattern=r"^[\w.-]+$")
     source_doc: str = Field(min_length=1, max_length=128)
     statement: str = Field(min_length=1, max_length=2000)
+    premises: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ImportBody(StrictBody):
@@ -110,7 +111,7 @@ def text_hash(text: str) -> str:
 def facts(tx):
     # 事实绑定来源正文的版本：正文变了而事实没重新登记，旧事实不再参与检查也不再有效
     current = {d["id"]: d.get("content_hash") or text_hash(d["text"]) for d in tx.all("document")}
-    return [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f.get("keywords", []))) for f in tx.all("fact")
+    return [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f.get("keywords", [])), tuple(f.get("premises", []))) for f in tx.all("fact")
             if f["source_doc"] in current and f.get("content_hash", current[f["source_doc"]]) == current[f["source_doc"]]]
 
 
@@ -461,6 +462,8 @@ def knowledge_import(body: ImportBody, who=Depends(admin)):
         for fact in body.facts:
             if fact.source_doc not in docs:
                 raise HTTPException(422, "受限事实必须关联已有资料。")
+            if any(pid not in docs for pid in fact.premises):
+                raise HTTPException(422, "前提资料必须是已有资料。")
             tx.put("fact", fact.id, {**fact.model_dump(), "acl": docs[fact.source_doc]["acl"], "keywords": [],
                                  "content_hash": docs[fact.source_doc]["content_hash"]})
         # Updating a source ACL must also update all inherited fact ACLs.

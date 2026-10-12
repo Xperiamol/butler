@@ -7,7 +7,7 @@ import re
 
 from ..models import Doc
 
-CITE = re.compile(r"\[([A-Za-z0-9_.:\-]+)\]")
+CITE = re.compile(r"\[([A-Za-z0-9_.:/\-]+)\]")
 NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 

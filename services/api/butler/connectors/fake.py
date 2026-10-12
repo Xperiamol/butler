@@ -11,7 +11,7 @@ DATA_SOURCE = "fake"
 def load_world(path: Path = DEFAULT_WORLD):
     w = json.loads(Path(path).read_text(encoding="utf-8"))
     docs = [Doc(d["id"], d["source"], d["title"], d["text"], frozenset(d["acl"])) for d in w["docs"]]
-    facts = [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f["keywords"])) for f in w["facts"]]
+    facts = [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f["keywords"]), tuple(f.get("premises", []))) for f in w["facts"]]
     return w["identities"], docs, facts
 
 

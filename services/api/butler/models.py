@@ -27,6 +27,7 @@ class Fact:
     acl: frozenset[str]
     statement: str
     keywords: tuple[str, ...] = ()
+    premises: tuple[str, ...] = ()  # 推出该结论所需的资料编号：用户累计拿到全部前提 = 结论已可推出，与措辞无关
 
 
 @dataclass

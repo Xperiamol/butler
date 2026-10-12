@@ -16,12 +16,22 @@ _GLUE = re.compile(r"是不是|有没有|是否|能不能|会不会|可不可以
 _STOP = set("的了是吗呢什么怎么为这那和与在有要又还就都把从给让被对说")
 
 
+_EN_STOP = {"the", "a", "an", "is", "are", "was", "were", "be", "to", "of", "and", "or", "in", "on", "for", "with", "at",
+            "by", "from", "as", "it", "this", "that", "what", "which", "who", "how", "do", "does", "me", "my", "about",
+            "tell", "latest", "can", "i", "we", "our", "your", "you", "please", "there", "any", "has", "have"}
+_TOKEN = re.compile(r"[a-z0-9]+|[\u4e00-\u9fff]+")
+
+
 def _bigrams(s: str) -> set[str]:
-    s = re.sub(r"[\s\W_]+", " ", s.lower())
-    grams = set()
-    for chunk in s.split():
-        grams |= {chunk[i:i + 2] for i in range(len(chunk) - 1)}
-    return {g for g in grams if not (g[0] in _STOP and g[1] in _STOP)}
+    """中文用字符二元组；英文/数字按词（去常见虚词），中英混合的问题两边都能命中。"""
+    grams: set[str] = set()
+    for tok in _TOKEN.findall(s.lower()):
+        if tok[0] < "\u4e00":
+            if len(tok) > 1 and tok not in _EN_STOP:
+                grams.add(tok)
+        else:
+            grams |= {tok[i:i + 2] for i in range(len(tok) - 1) if not (tok[i] in _STOP and tok[i + 1] in _STOP)}
+    return grams
 
 
 class Store:
@@ -31,6 +41,8 @@ class Store:
     def __init__(self, docs: list[Doc]):
         self._docs = docs
         self._by_id = {d.id: d for d in docs}
+        self._grams = {d.id: _bigrams(d.title + d.text) for d in docs}
+        self._index: dict[frozenset, tuple] = {}  # 按权限组缓存：同一组用户共享可见集合与 IDF（只含其可见文档的统计）
 
     def get_many(self, ids: list[str]) -> list[Doc]:
         return [self._by_id[i] for i in ids if i in self._by_id]
@@ -38,16 +50,22 @@ class Store:
     def visible(self, identity: Identity) -> list[Doc]:
         return [d for d in self._docs if can_read(identity, d)]
 
+    def _visible_index(self, identity: Identity):
+        key = identity.groups
+        if key not in self._index:
+            allowed = [d for d in self._docs if can_read(identity, d)]  # 先过滤
+            grams = {d.id: self._grams[d.id] for d in allowed}
+            # IDF 只在提问者可见的文档上统计：受限文档的词频也是信息，不能漏进打分
+            df: dict[str, int] = {}
+            for g in grams.values():
+                for b in g:
+                    df[b] = df.get(b, 0) + 1
+            # 平滑 IDF 恒为正，小库和单文档库也不会把所有词的权重压到接近 0
+            self._index[key] = (allowed, grams, {b: math.log(1 + len(allowed) / c) for b, c in df.items()})
+        return self._index[key]
+
     def search(self, identity: Identity, query: str, k: int = 6) -> list[Doc]:
-        allowed = [d for d in self._docs if can_read(identity, d)]  # 先过滤
-        grams = {d.id: _bigrams(d.title + d.text) for d in allowed}
-        # IDF 只在提问者可见的文档上统计：受限文档的词频也是信息，不能漏进打分
-        df: dict[str, int] = {}
-        for g in grams.values():
-            for b in g:
-                df[b] = df.get(b, 0) + 1
-        # 平滑 IDF 恒为正，小库和单文档库也不会把所有词的权重压到接近 0
-        idf = {b: math.log(1 + len(allowed) / c) for b, c in df.items()}
+        allowed, grams, idf = self._visible_index(identity)
         # 多方面的问题拆成子查询分别检索，再按出现顺序合并
         out: list[Doc] = []
         for sub in [query] + [p for p in _SPLIT.split(query) if len(p) >= 2]:
