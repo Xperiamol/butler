@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 
 MODEL_PATH = Path(__file__).parent / "models" / "injection-v1.json.gz"
-WINDOW, STRIDE = 700, 500
+WINDOW, STRIDE = 500, 250
 _ZW = re.compile("[​-‏⁠﻿‪-‮]")
 _LEET = str.maketrans("013457@$", "oieastas")
 _SPACED = re.compile(r"\b(?:[a-z] ){3,}[a-z]\b")
@@ -81,10 +81,24 @@ def grams(text: str) -> Counter:
     return c
 
 
+_SENT = re.compile(r"(?<=[.!?。！？;；])\s+|\n+")
+MAX_UNIT = 400
+
+
 def windows(text: str) -> list[str]:
-    if len(text) <= WINDOW:
-        return [text]
-    return [text[i:i + WINDOW] for i in range(0, len(text) - WINDOW + STRIDE, STRIDE)]
+    """检测单元：每个句子，加上相邻两句的组合。按句子打分，载荷不会被前后大段正常文字稀释。"""
+    parts = [p.strip() for p in _SENT.split(text) if p and p.strip()]
+    merged: list[str] = []
+    for p in parts:          # 过短的碎片并入下一句；过长的句子再按长度切开
+        while len(p) > MAX_UNIT:
+            merged.append(p[:MAX_UNIT])
+            p = p[MAX_UNIT - 100:]
+        if merged and len(merged[-1]) < 25:
+            merged[-1] = merged[-1] + " " + p
+        else:
+            merged.append(p)
+    out = list(merged) + [merged[i] + " " + merged[i + 1] for i in range(len(merged) - 1)]
+    return out or [text]
 
 
 class Model:

@@ -100,8 +100,9 @@ def positives(rng: random.Random, families: list[str], per_family: int, contexts
             t = rng.choice(FAMILIES[fam])
             text = t.format(a=rng.choice(ZH_ACTIONS if fam == "zh" else ACTIONS), p=rng.choice(PERSONAS),
                             s=rng.choice(SECRETS), u=rng.choice(URLS))
-            before, after = rng.choice(contexts), rng.choice(contexts)
-            placement = rng.choice(["alone", "middle", "end"])
+            before = " ".join(rng.choice(contexts) for _ in range(rng.randint(0, 1)))   # 检测按句子打分，训练只带 0~1 句上下文
+            after = " ".join(rng.choice(contexts) for _ in range(rng.randint(0, 1)))
+            placement = rng.choice(["alone", "alone", "middle", "end"])
             body = {"alone": text, "middle": f"{before} {text} {after}", "end": f"{before}\n\n{text}"}[placement]
             out.append({"text": body, "label": 1, "family": fam})
     return out

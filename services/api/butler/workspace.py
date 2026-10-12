@@ -21,7 +21,7 @@ from .answer.session import Session
 from .audit.chain import GENESIS, _h, verify
 from .audit.checkpoint import sign_checkpoint
 from .audit.persistent import PersistentAudit
-from .knowledge import KnowledgeError, delete_document, text_hash as _text_hash, upsert_documents
+from .knowledge import KnowledgeError, delete_document, refresh_auto_premises, text_hash as _text_hash, upsert_documents
 from .connectors.fake import load_world
 from .database import Database
 from .models import Doc, Fact, Identity
@@ -137,7 +137,10 @@ def reindex(ids=None):
     with database.transaction() as tx:
         embedder = embedder_for(tx.get("settings", "main"))
     try:
-        return index_documents(database, embedder, ids)
+        stats = index_documents(database, embedder, ids)
+        with database.transaction() as tx:
+            refresh_auto_premises(tx)   # 资料变了，受限事实的前提重新发现
+        return stats
     except EmbeddingFailure:
         with database.transaction() as tx:
             PersistentAudit(tx).append({"event": "index.failed", "reason": "embedding_unavailable"})
@@ -151,7 +154,7 @@ def text_hash(text: str) -> str:
 def facts(tx):
     # 事实绑定来源正文的版本：正文变了而事实没重新登记，旧事实不再参与检查也不再有效
     current = {d["id"]: d.get("content_hash") or text_hash(d["text"]) for d in tx.all("document")}
-    return [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f.get("keywords", [])), tuple(f.get("premises", []))) for f in tx.all("fact")
+    return [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f.get("keywords", [])), tuple(f.get("premises") or f.get("auto_premises", []))) for f in tx.all("fact")
             if f["source_doc"] in current and f.get("content_hash", current[f["source_doc"]]) == current[f["source_doc"]]]
 
 

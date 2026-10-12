@@ -40,14 +40,11 @@ def sentences(docs) -> list[str]:
 
 
 def windows_from_docs(docs, rng, per_doc=4) -> list[str]:
+    """负例：真实文档里的检测单元（句子或相邻两句），与线上 scan 看到的东西一致。"""
     out = []
     for d in docs:
-        t = d.text
-        if len(t) < 200:
-            continue
-        for _ in range(per_doc):
-            i = rng.randrange(0, max(1, len(t) - 400))
-            out.append(t[i:i + rng.choice([200, 400, 600])])
+        units = [u for u in inj.windows(d.text) if len(u) > 20]
+        out += rng.sample(units, min(len(units), per_doc * 6))
     return out
 
 
@@ -105,26 +102,46 @@ def make_data(docs, seed):
         if k == "train":
             hn += [{"text": t, "label": 0, "family": "hard_negative"} for t in HARD_NEGATIVES]
         pos = positives(rng, list(FAMILIES), 160 if k == "train" else 100, ctx[k])
-        data[k] = {"neg": neg, "hn": hn, "pos": pos}
+        data[k] = {"neg": neg, "hn": hn, "pos": pos, "chunks": chunk_texts(split[k])}
     return data
+
+
+def chunk_scores(clf, vocab, idf, texts):
+    """整块文本的分数 = 各推理窗口分数的最大值（与线上 scan 一致）；阈值与误报率都按块来算。"""
+    wins = [inj.windows(t) for t in texts]
+    flat = [w for ws in wins for w in ws]
+    sc = scores(clf, vocab, idf, flat) if flat else np.array([])
+    out, i = [], 0
+    for ws in wins:
+        out.append(float(np.max(sc[i:i + len(ws)])))
+        i += len(ws)
+    return np.array(out)
+
+
+def chunk_texts(docs, size=2000):
+    out = []
+    for d in docs:
+        t = d.text
+        out += [t[i:i + size] for i in range(0, max(len(t) - 400, 1), size) if len(t[i:i + size]) > 300]
+    return out
 
 
 def rates(clf_scores_pos, clf_scores_neg, thr):
     return float(np.mean(clf_scores_pos >= thr)), float(np.mean(clf_scores_neg >= thr))
 
 
-def run(docs, seed=11):
+def run(docs, seed=11, quick=False):
     data = make_data(docs, seed)
     train = data["train"]["neg"] + data["train"]["hn"] + data["train"]["pos"]
-    report = {"seed": seed, "sizes": {k: {t: len(v) for t, v in d.items()} for k, d in data.items()}, "lofo": {}}
-    for fam in FAMILIES:  # leave-one-family-out
+    report = {"seed": seed, "sizes": {k: {t: len(v) for t, v in d.items()} for k, d in data.items()}, "lofo": {}, "unit": "chunk (max over inference windows)"}
+    for fam in ([] if quick else FAMILIES):  # leave-one-family-out
         tr = [x for x in train if x["family"] != fam]
         clf, vocab, idf = fit(tr)
-        val_neg = scores(clf, vocab, idf, [x["text"] for x in data["val"]["neg"]])
+        val_neg = chunk_scores(clf, vocab, idf, data["val"]["chunks"])
         thr = pick_threshold(val_neg)
-        pos = scores(clf, vocab, idf, [x["text"] for x in data["test"]["pos"] if x["family"] == fam])
-        neg = scores(clf, vocab, idf, [x["text"] for x in data["test"]["neg"]])
-        hn = scores(clf, vocab, idf, [x["text"] for x in data["test"]["hn"]])
+        pos = chunk_scores(clf, vocab, idf, [x["text"] for x in data["test"]["pos"] if x["family"] == fam])
+        neg = chunk_scores(clf, vocab, idf, data["test"]["chunks"])
+        hn = chunk_scores(clf, vocab, idf, [x["text"] for x in data["test"]["hn"]])
         rule_recall = float(np.mean([bool(inj.rule_hits(x["text"])) for x in data["test"]["pos"] if x["family"] == fam]))
         report["lofo"][fam] = {"recall_model_only": round(float(np.mean(pos >= thr)), 3),
                                "recall_rules_only": round(rule_recall, 3),
@@ -132,24 +149,25 @@ def run(docs, seed=11):
                                    pos, [x for x in data["test"]["pos"] if x["family"] == fam])])), 3),
                                "fpr_handbook": round(float(np.mean(neg >= thr)), 4), "fpr_hard_negative": round(float(np.mean(hn >= thr)), 4)}
     clf, vocab, idf = fit(train)
-    val_neg = scores(clf, vocab, idf, [x["text"] for x in data["val"]["neg"]])
+    val_neg = chunk_scores(clf, vocab, idf, data["val"]["chunks"])
     thr = pick_threshold(val_neg)
     te = data["test"]
-    pos_s = scores(clf, vocab, idf, [x["text"] for x in te["pos"]])
-    neg_s = scores(clf, vocab, idf, [x["text"] for x in te["neg"]])
-    hn_s = scores(clf, vocab, idf, [x["text"] for x in te["hn"]])
-    casc = lambda scs, xs: np.mean([(s >= thr) or bool(inj.rule_hits(x["text"])) for s, x in zip(scs, xs)])
+    pos_s = chunk_scores(clf, vocab, idf, [x["text"] for x in te["pos"]])
+    neg_s = chunk_scores(clf, vocab, idf, te["chunks"])
+    hn_s = chunk_scores(clf, vocab, idf, [x["text"] for x in te["hn"]])
+    casc = lambda scs, xs: np.mean([(s >= thr) or bool(inj.rule_hits(x["text"] if isinstance(x, dict) else x)) for s, x in zip(scs, xs)])
     report["final"] = {"threshold": round(thr, 4),
                        "recall_in_distribution": round(float(np.mean(pos_s >= thr)), 3),
                        "recall_cascade": round(float(casc(pos_s, te["pos"])), 3),
                        "recall_rules_only": round(float(np.mean([bool(inj.rule_hits(x["text"])) for x in te["pos"]])), 3),
                        "fpr_handbook": round(float(np.mean(neg_s >= thr)), 4),
-                       "fpr_handbook_cascade": round(float(casc(neg_s, te["neg"])), 4),
+                       "fpr_handbook_cascade": round(float(casc(neg_s, te["chunks"])), 4),
                        "fpr_hard_negative": round(float(np.mean(hn_s >= thr)), 4),
                        "fpr_hard_negative_cascade": round(float(casc(hn_s, te["hn"])), 4),
                        "fpr_hard_negative_rules_only": round(float(np.mean([bool(inj.rule_hits(x["text"])) for x in te["hn"]])), 4)}
-    report["lofo_mean_recall_cascade"] = round(float(np.mean([v["recall_cascade"] for v in report["lofo"].values()])), 3)
-    report["lofo_mean_recall_model_only"] = round(float(np.mean([v["recall_model_only"] for v in report["lofo"].values()])), 3)
+    if report["lofo"]:
+        report["lofo_mean_recall_cascade"] = round(float(np.mean([v["recall_cascade"] for v in report["lofo"].values()])), 3)
+        report["lofo_mean_recall_model_only"] = round(float(np.mean([v["recall_model_only"] for v in report["lofo"].values()])), 3)
     return report, (clf, vocab, idf, thr)
 
 
@@ -170,9 +188,10 @@ def main(argv=None) -> int:
     p.add_argument("--handbook", required=True, type=Path)
     p.add_argument("--seed", type=int, default=11)
     p.add_argument("--write", action="store_true", help="写出模型与指标")
+    p.add_argument("--quick", action="store_true", help="跳过 leave-one-family-out，只训练并评估最终模型")
     a = p.parse_args(argv)
     docs = load_handbook(a.handbook)
-    report, fitted = run(docs, a.seed)
+    report, fitted = run(docs, a.seed, a.quick)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if a.write:
         export(fitted, MODEL_OUT)

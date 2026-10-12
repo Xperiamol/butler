@@ -74,3 +74,10 @@ def test_cross_turn_combination_is_scored_as_leak():
     finally:
         pl.default_generator = original
     assert r["doc"]["leaks"] == 1
+
+
+def test_bracketed_words_that_exist_in_the_source_are_text_not_citations():
+    doc = Doc("log", "upload", "运行日志说明", "日志级别包括 [warning] 和 [info]，章节目录见 [TOC]。", frozenset({"staff"}))
+    a = ask("- [log] 日志级别包括 [warning] 和 [info]，章节目录见 [TOC]。", docs=(doc,), question="运行日志说明里的日志级别")
+    assert a.status == "answered"
+    assert ask("日志级别见 [fake-doc-9]。[log]", docs=(doc,), question="运行日志说明里的日志级别").status == "citation_failed"

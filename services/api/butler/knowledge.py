@@ -70,3 +70,30 @@ def delete_document(tx, doc_id: str) -> bool:
         tx.delete("fact", fact["id"])
     tx.put("meta", "revision", {"value": tx.get("meta", "revision", {"value": 1})["value"] + 1})
     return True
+
+
+def refresh_auto_premises(tx) -> dict:
+    """为没有人工登记前提的受限事实自动发现前提（管理侧离线计算，用全库词频）。
+    人工登记的 premises 永远优先；自动发现不足两个资料时不启用（单个资料本身不构成"拼图"）。"""
+    from .security import premises as P
+    model = P.load_model()
+    if model is None:
+        return {"updated": 0}
+    docs = tx.all("document")
+    todo = [f for f in tx.all("fact") if not f.get("premises")]
+    if not todo or not docs:
+        return {"updated": 0}
+    corpus = P.Corpus.build([(d["id"], d["title"] + "\n" + d["text"]) for d in docs])
+    texts = {d["id"]: d["title"] + "\n" + d["text"] for d in docs}
+    acls = {d["id"]: set(d["acl"]) for d in docs}
+    updated = 0
+    for f in todo:
+        if f["source_doc"] not in acls:
+            continue
+        found = P.discover(corpus, texts, f["statement"], f["source_doc"], model,
+                           eligible=P.eligible_premises(acls, f["source_doc"]))
+        ids = [d for d, _ in found] if len(found) >= 2 else []
+        if ids != f.get("auto_premises", []):
+            tx.put("fact", f["id"], {**f, "auto_premises": ids, "auto_premise_probs": dict(found) if ids else {}})
+            updated += 1
+    return {"updated": updated}

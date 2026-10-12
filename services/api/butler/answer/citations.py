@@ -17,13 +17,16 @@ URL = re.compile(r"https?://[^\s)\]>\"']+", re.I)
 def verify_citations(draft: str, context: list[Doc], urls: bool = True) -> tuple[list[str], list[str]]:
     """返回 (有效引用 ID, 问题列表)；问题列表为空才算通过。"""
     by_id = {d.id: d for d in context}
+    # 资料原文里本来就有的方括号词（[TOC]、[warning]、链接引用名）是正文，不是引用；编造的编号不会出现在资料里
+    literal = {t for d in context for t in CITE.findall(d.title + " " + d.text)}
     valid: list[str] = []
     problems: list[str] = []
     for line in draft.splitlines():
         ids = CITE.findall(line)
         for i in ids:
             if i not in by_id:
-                problems.append(f"unknown:{i}")
+                if i not in literal:
+                    problems.append(f"unknown:{i}")
             elif i not in valid:
                 valid.append(i)
         known = [i for i in ids if i in by_id]

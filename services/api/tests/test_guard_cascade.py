@@ -50,3 +50,16 @@ def test_over_budget_is_refused_not_silently_passed():
 def test_shortlist_ranks_by_overlap():
     fs = facts(30)
     assert shortlist("终止蓝鲸0005", fs)[0].id == "f5"
+
+
+def test_anchored_judge_ignores_keyword_in_unrelated_context_but_still_catches_the_leak():
+    from butler.answer.mosaic import AnchoredKeywordJudge, anchors_of
+    f = Fact("f", "s", frozenset({"hr"}), "The company will acquire Orbit Labs", ("acquire", "acquisition"))
+    assert anchors_of(f) == ("Orbit", "Labs")
+    j, plain = AnchoredKeywordJudge(), KeywordJudge()
+    unrelated = "Our onboarding covers the acquisition of new skills and how to acquire access."
+    leak = "Taken together, the company is preparing to acquire Orbit Labs."
+    assert plain.entails(unrelated, f) and not j.entails(unrelated, f)       # 关键词判官误报，锚定后不再误报
+    assert j.entails(leak, f)
+    no_names = Fact("g", "s", frozenset({"hr"}), "layoffs next quarter", ("layoffs",))
+    assert j.entails("layoffs are coming", no_names)                          # 没有专有名词时退回关键词行为

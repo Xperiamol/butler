@@ -27,6 +27,10 @@ def tick(database, embedder_for, n: int = 0, reconcile_every: int = 20) -> dict:
         if n % reconcile_every == 0:
             out["reconcile"] = sync.reconcile(database, connector, ttl=ttl)
         out["processed"] = sync.drain(database, connector, cfg.get("principal_map", {}), embedder_for(settings), ttl)
+        if out["processed"].get("done") or out["processed"].get("deleted"):
+            from ..knowledge import refresh_auto_premises
+            with database.transaction() as tx:
+                out["auto_premises"] = refresh_auto_premises(tx)
         return out
     except Exception as error:   # noqa: BLE001
         log.error("sync tick failed: %s", type(error).__name__)
