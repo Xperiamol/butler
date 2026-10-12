@@ -27,13 +27,14 @@ class AuditLog:
         return self.entries[-1]["hash"] if self.entries else GENESIS
 
 
-def verify(entries: list[dict], checkpoint: str | None = None) -> tuple[bool, int | None]:
-    """返回 (是否完整, 第一个出错位置)。"""
-    prev = GENESIS
+def verify(entries, checkpoint: str | None = None) -> tuple[bool, int | None]:
+    """返回 (是否完整, 第一个出错位置)。entries 可以是列表或迭代器（数据库分批流式读取）。"""
+    prev, n = GENESIS, 0
     for i, e in enumerate(entries):
+        n = i + 1
         if e["prev_hash"] != prev or e["hash"] != _h(prev, e["payload"]):
             return False, i
         prev = e["hash"]
     if checkpoint is not None and prev != checkpoint:
-        return False, len(entries)  # 尾部被截断
+        return False, n  # 尾部被截断
     return True, None

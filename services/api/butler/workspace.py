@@ -482,7 +482,7 @@ def conversations(who=Depends(current)):
         who = checked(tx, who)
         return [{"id": c["id"], "title": c["title"], "updated": c["updated"],
                  "stale": c["revision"] != revision(tx, who)}
-                for c in sorted(tx.all("conversation"), key=lambda c: -c["updated"]) if c["owner"] == who.id]
+                for c in tx.query("conversation", order_by="updated", descending=True, limit=200, owner=who.id)]
 
 
 @router.get("/conversations/{key}")
@@ -590,10 +590,11 @@ def audit_list(who=Depends(auditor)):
         visible = {d.id for d in Store(documents(tx)).visible(who)}
         readable_facts = {f.id for f in facts(tx) if can_read(who, f)}
         full = who.role in ADMIN_ROLES
-        entries = tx.all("audit_entry")
+        length = tx.count("audit_entry")
+        tail = tx.tail("audit_entry", 200)  # 只取最后 200 条，不加载整条链
         PersistentAudit(tx).append({"event": "audit.viewed", "user": who.id})  # 看审计本身也要留痕
         rows = []
-        for i, e in list(enumerate(entries))[-200:]:
+        for i, e in ((length - len(tail) + n, row) for n, (_, row) in enumerate(tail)):
             p = e["payload"]
             hidden = not full and any(d not in visible for d in p.get("docs", []))
             payload = {"guard": True, "question_hash": "", "blocked_facts": [], "degraded": False, **p,
@@ -604,7 +605,7 @@ def audit_list(who=Depends(auditor)):
                 if hidden:
                     payload["question_hash"] = ""
             rows.append({**e, "index": i, "payload": payload})
-        return {"entries": rows, "length": len(entries)}
+        return {"entries": rows, "length": length}
 
 
 def signing_key() -> bytes:
@@ -631,6 +632,5 @@ def audit_export(who=Depends(admin)):
 def audit_verify(who=Depends(auditor)):
     with database.transaction() as tx:
         who = checked(tx, who, AUDIT_ROLES)
-        entries = tx.all("audit_entry")
-        ok, bad = verify(entries, tx.get("meta", "audit_head")["hash"])
-        return {"ok": ok, "first_bad_index": bad, "length": len(entries)}
+        ok, bad = verify(tx.iter("audit_entry"), tx.get("meta", "audit_head")["hash"])
+        return {"ok": ok, "first_bad_index": bad, "length": tx.count("audit_entry")}
