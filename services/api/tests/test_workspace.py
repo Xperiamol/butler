@@ -176,3 +176,15 @@ def test_fact_expires_when_source_text_changes(db):
     assert client.post("/workspace/knowledge/import", headers=headers(), json={"documents": [new], "facts": []}).status_code == 200
     with db.transaction() as tx:
         assert tx.get("fact", "f-budget") is None and "f-budget" not in [f.id for f in w.facts(tx)]
+
+
+def test_audit_export_requires_admin_and_signing_key(db, monkeypatch):
+    from butler.audit.checkpoint import generate_keypair
+    from butler.audit.verify_cli import check
+    ask("ken")
+    assert client.get("/workspace/audit/export", headers=headers("amy")).status_code == 403  # 范围受限的审计员拿不到原始链
+    assert client.get("/workspace/audit/export", headers=headers()).status_code == 503  # 没配密钥就不签
+    private, public = generate_keypair()
+    monkeypatch.setenv("BUTLER_AUDIT_SIGNING_KEY", private.decode())
+    out = client.get("/workspace/audit/export", headers=headers()).json()
+    assert check(out["entries"], out["checkpoint"], public) == []

@@ -18,6 +18,7 @@ from .answer.pipeline import answer_question
 from .answer.remote import ModelFailure, RemoteJudge, RemoteModel
 from .answer.session import Session
 from .audit.chain import GENESIS, _h, verify
+from .audit.checkpoint import sign_checkpoint
 from .connectors.fake import load_world
 from .database import Database
 from .models import Doc, Fact, Identity
@@ -547,6 +548,26 @@ def audit_list(who=Depends(auditor)):
             rows.append({**e, "index": i, "payload": {"guard": True, "question_hash": "", "blocked_facts": [],
                          "degraded": False, **p, "docs": [d if d in visible else "[受限]" for d in p.get("docs", [])]}})
         return {"entries": rows, "length": len(entries)}
+
+
+def signing_key() -> bytes:
+    value = os.getenv("BUTLER_AUDIT_SIGNING_KEY", "")
+    if not value:
+        raise HTTPException(503, "未配置审计签名密钥（BUTLER_AUDIT_SIGNING_KEY）。")
+    return (Path(value).read_bytes() if not value.startswith("-----") and Path(value).exists() else value.encode())
+
+
+@router.get("/audit/export")
+def audit_export(who=Depends(admin)):
+    """完整原始链，哈希才能被独立验证；只给管理员/安全角色，范围受限的审计员看不到。"""
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+        key = signing_key()
+        entries = tx.all("audit_entry")
+        head = tx.get("meta", "audit_head")
+        checkpoint = sign_checkpoint(key, head["count"], head["hash"])
+        PersistentAudit(tx).append({"event": "audit.exported", "user": who.id, "count": head["count"]})
+        return {"entries": entries, "checkpoint": checkpoint}
 
 
 @router.get("/audit/verify")
