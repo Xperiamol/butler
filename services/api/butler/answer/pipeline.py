@@ -53,7 +53,8 @@ def question_hash(question: str) -> str:
 
 def answer_question(identity: Identity, question: str, store: Store, all_facts: list[Fact],
                     judge: Judge, audit: AuditLog, guard: bool = True,
-                    session: Optional[Session] = None, generate: Optional[Generator] = None) -> Answer:
+                    session: Optional[Session] = None, generate: Optional[Generator] = None,
+                    request_id: str = "") -> Answer:
     t0 = time.perf_counter()
     generate = generate or default_generator()
     docs = store.search(identity, question)
@@ -91,7 +92,8 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
     if session is not None:
         session.remember(cited, text)
     audit.append({"user": identity.id, "question_hash": question_hash(question), "guard": guard,
-                  "docs": cited, "degraded": status == "degraded", "status": status,
+                  "docs": cited, "degraded": status == "degraded", "status": status, "request_id": request_id,
+                  "answer_digest": hashlib.sha256(text.encode()).hexdigest()[:16], "event": "ask",
                   "blocked_facts": [f.id for f in hits]})  # 只记 ID，不记内容
     return Answer(text=text, citations=cited, degraded=status in ("degraded", "refused"), status=status, blocked_facts=[f.id for f in hits],
                   latency_ms=round((time.perf_counter() - t0) * 1000, 2), guard_ms=round(guard_ms, 2))

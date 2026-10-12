@@ -188,3 +188,28 @@ def test_audit_export_requires_admin_and_signing_key(db, monkeypatch):
     monkeypatch.setenv("BUTLER_AUDIT_SIGNING_KEY", private.decode())
     out = client.get("/workspace/audit/export", headers=headers()).json()
     assert check(out["entries"], out["checkpoint"], public) == []
+
+
+def test_failed_ask_is_audited_and_scoped_view_hides_restricted_fact_ids(db, monkeypatch):
+    import httpx
+    monkeypatch.setattr(w, "MODE", "enterprise")
+    monkeypatch.setenv("HUNYUAN_API_KEY", "test-only-not-a-real-key")
+    with db.transaction() as tx:
+        tx.put("settings", "main", {**tx.get("settings", "main"), "generation_model": "g", "judge_model": "j"})
+
+    def boom(url, **options):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(httpx, "post", boom)
+    r = client.post("/workspace/ask", headers=headers("ken"), json={"question": "支付 API 限流是多少？", "session_id": "f", "request_id": "req-1"})
+    assert r.status_code == 503
+    with db.transaction() as tx:
+        failed = [e["payload"] for e in tx.all("audit_entry") if e["payload"].get("event") == "ask.failed"]
+    assert failed and failed[0]["request_id"] == "req-1"
+    monkeypatch.setattr(w, "MODE", "demo")
+    ask("ken", "s2", "Payments 团队 Q4 预算为 0，供应商合同又暂停，这意味着什么？")
+    amy = client.get("/workspace/audit", headers=headers("amy")).json()
+    assert "f-reorg" not in str(amy)
+    sara = client.get("/workspace/audit", headers=headers()).json()
+    assert "f-reorg" in str(sara)
+    assert any(e["payload"].get("event") == "audit.viewed" for e in sara["entries"])

@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import time
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal, Optional
@@ -14,7 +15,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from .acl.policy import can_read
 from .answer.mosaic import KeywordJudge
-from .answer.pipeline import answer_question
+from .answer.pipeline import answer_question, question_hash
 from .answer.remote import ModelFailure, RemoteJudge, RemoteModel
 from .answer.session import Session
 from .audit.chain import GENESIS, _h, verify
@@ -84,6 +85,7 @@ class ImportBody(StrictBody):
 class AskBody(StrictBody):
     question: str = Field(min_length=1, max_length=4000)
     session_id: str = Field(min_length=1, max_length=128, pattern=r"^[\w:-]+$")
+    request_id: str = Field(default_factory=lambda: uuid.uuid4().hex, min_length=1, max_length=64, pattern=r"^[\w-]+$")
 
 
 class ProvisionBody(StrictBody):
@@ -496,6 +498,13 @@ def conversation_get(key: str, who=Depends(current)):
 
 @router.post("/ask")
 def ask(body: AskBody, who=Depends(current)):
+    result = _ask(body, who)
+    if "__failure__" in result:
+        raise HTTPException(503, result["__failure__"])
+    return result
+
+
+def _ask(body: AskBody, who):
     with database.transaction() as tx:
         row = tx.get("member", who.id)
         if not row or not row["active"]:
@@ -522,11 +531,18 @@ def ask(body: AskBody, who=Depends(current)):
             options["generate"] = RemoteModel(base, key_value, settings["generation_model"], settings["max_tokens"])
             judge = RemoteJudge(RemoteModel(base, key_value, settings["judge_model"], 4096))
         docs = documents(tx)
+        audit = PersistentAudit(tx)
         try:
             a = answer_question(who, body.question, Store(docs), facts(tx), judge,
-                                PersistentAudit(tx), session=session, **options)
+                                audit, session=session, request_id=body.request_id, **options)
         except ModelFailure as error:
-            raise HTTPException(503, str(error))
+            # 失败也要留痕；先提交审计再报错（在事务里直接 raise 会整体回滚）
+            audit.append({"event": "ask.failed", "user": who.id, "request_id": body.request_id,
+                          "question_hash": question_hash(body.question), "reason": "model_failure"})
+            failure = str(error)
+            a = None
+        if a is None:
+            return {"__failure__": failure}
         answer = {"text": a.text, "citations": cite([d for d in docs if d.id in a.citations]),
                   "latency_ms": a.latency_ms, "data_source": "fake" if MODE == "demo" else "workspace"}
         tx.put("conversation", key, {"id": body.session_id, "owner": who.id,
@@ -541,12 +557,22 @@ def audit_list(who=Depends(auditor)):
     with database.transaction() as tx:
         who = checked(tx, who, AUDIT_ROLES)
         visible = {d.id for d in Store(documents(tx)).visible(who)}
+        readable_facts = {f.id for f in facts(tx) if can_read(who, f)}
+        full = who.role in ADMIN_ROLES
         entries = tx.all("audit_entry")
+        PersistentAudit(tx).append({"event": "audit.viewed", "user": who.id})  # 看审计本身也要留痕
         rows = []
         for i, e in list(enumerate(entries))[-200:]:
             p = e["payload"]
-            rows.append({**e, "index": i, "payload": {"guard": True, "question_hash": "", "blocked_facts": [],
-                         "degraded": False, **p, "docs": [d if d in visible else "[受限]" for d in p.get("docs", [])]}})
+            hidden = not full and any(d not in visible for d in p.get("docs", []))
+            payload = {"guard": True, "question_hash": "", "blocked_facts": [], "degraded": False, **p,
+                       "docs": [d if d in visible else "[受限]" for d in p.get("docs", [])]}
+            if not full:
+                # 范围受限的审计员：不属于自己权限范围的事实，连编号都不能看到
+                payload["blocked_facts"] = [f if f in readable_facts else "[受限]" for f in payload["blocked_facts"]]
+                if hidden:
+                    payload["question_hash"] = ""
+            rows.append({**e, "index": i, "payload": payload})
         return {"entries": rows, "length": len(entries)}
 
 
