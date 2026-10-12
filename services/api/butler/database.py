@@ -42,6 +42,7 @@ chunks = Table("chunks", metadata,
                Column("start", Integer, nullable=False), Column("end", Integer, nullable=False),
                Column("tokens", Integer, nullable=False), Column("heading", Text, nullable=False, default=""),
                Column("text", Text, nullable=False), Column("text_hash", String(64), nullable=False),
+               Column("risk", Float, nullable=False, default=0.0), Column("flags", String(200), nullable=False, default=""),
                Index("ix_chunks_doc", "doc_id", "content_hash"))
 embeddings = Table("embeddings", metadata,
                    Column("model", String(128), primary_key=True), Column("text_hash", String(64), primary_key=True),

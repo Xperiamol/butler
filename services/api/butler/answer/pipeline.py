@@ -1,12 +1,14 @@
 from __future__ import annotations
 import hashlib
 import time
+from dataclasses import replace
 from typing import Callable, Optional
 
 from ..acl.policy import can_read
 from ..audit.chain import AuditLog
 from ..models import Answer, Doc, Fact, Identity
 from ..retrieval.store import Store
+from ..security.injection import neutralize, scan
 from .citations import verify_citations
 from .mosaic import GuardBudgetExceeded, Judge, check, premise_hits
 from .session import Session
@@ -54,7 +56,7 @@ def question_hash(question: str) -> str:
 def answer_question(identity: Identity, question: str, store: Store, all_facts: list[Fact],
                     judge: Judge, audit: AuditLog, guard: bool = True,
                     session: Optional[Session] = None, generate: Optional[Generator] = None,
-                    request_id: str = "") -> Answer:
+                    request_id: str = "", injection: bool = True) -> Answer:
     t0 = time.perf_counter()
     generate = generate or default_generator()
     docs = store.search(identity, question)
@@ -62,9 +64,19 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
     history = [d for d in store.get_many(session.doc_ids if session else []) if can_read(identity, d)]
     context = history + [d for d in docs if d.id not in {h.id for h in history}]
     assert all(can_read(identity, d) for d in context)  # 不变量：生成器永远看不到无权文档
+    quarantined: list[str] = []
+    if guard and injection:
+        # 最后一道提示注入防线（入库时已扫过一次）：命中的资料不进生成上下文；其余资料拆掉定界符/角色伪装
+        kept = []
+        for d in context:
+            if scan(d.text).flagged:
+                quarantined.append(d.id)
+            else:
+                kept.append(replace(d, text=neutralize(d.text)))
+        context = kept
 
     status, hits, guard_ms, cited = "answered", [], 0.0, [d.id for d in context]
-    if not docs and not history:
+    if not context:
         text, status, cited = NO_EVIDENCE, "no_evidence", []
     elif guard and (chain := premise_hits(identity, all_facts, {d.id for d in context} | set(session.doc_ids if session else []))):
         # 结论的全部前提都将交到用户手里：不管模型怎么措辞，这一步都不放行，也不调用模型
@@ -74,7 +86,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
         g0 = time.perf_counter()
         text = draft
         if guard:
-            valid, problems = verify_citations(draft, context)
+            valid, problems = verify_citations(draft, context, urls=injection)
             if problems:
                 text, status, cited = UNVERIFIED, "citation_failed", []
             else:
@@ -100,6 +112,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
         session.remember(cited, text)
     audit.append({"user": identity.id, "question_hash": question_hash(question), "guard": guard,
                   "docs": cited, "degraded": status == "degraded", "status": status, "request_id": request_id,
+                  "quarantined": quarantined, "question_flagged": bool(guard and injection and scan(question).flagged),
                   "answer_digest": hashlib.sha256(text.encode()).hexdigest()[:16], "event": "ask",
                   "blocked_facts": [f.id for f in hits]})  # 只记 ID，不记内容
     return Answer(text=text, citations=cited, sources=[d for d in context if d.id in set(cited)], degraded=status in ("degraded", "refused"), status=status, blocked_facts=[f.id for f in hits],

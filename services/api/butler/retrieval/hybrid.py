@@ -32,6 +32,7 @@ POOL = 30
 RRF_K = 60
 MAX_DOCS = 6
 MAX_CHUNKS = 10
+INJECTION_BLOCK = 0.5   # 入库扫描风险分达到这个值（或规则命中）的块被隔离
 
 
 @dataclass
@@ -46,6 +47,7 @@ class _Chunk:
     title: str
     terms: Counter
     length: int
+    flagged: bool = False
 
 
 class _View:
@@ -94,27 +96,28 @@ class ChunkIndex:
     def has(self, doc_id: str, content_hash: str) -> bool:
         return doc_id in self.by_doc and self.by_doc[doc_id][0] == content_hash
 
-    def view(self, doc_ids: frozenset) -> _View:
-        if doc_ids not in self._views:
-            rows = [i for d in sorted(doc_ids) if d in self.by_doc for i in self.by_doc[d][1]]
+    def view(self, doc_ids: frozenset, quarantine: bool = True) -> _View:
+        key = (doc_ids, quarantine)
+        if key not in self._views:
+            rows = [i for d in sorted(doc_ids) if d in self.by_doc for i in self.by_doc[d][1] if not (quarantine and self.chunks[i].flagged)]
             if len(self._views) > 64:
                 self._views.clear()
-            self._views[doc_ids] = _View(self.chunks, rows)
-        return self._views[doc_ids]
+            self._views[key] = _View(self.chunks, rows)
+        return self._views[key]
 
 
 def load_index(tx, embedder: Embedder) -> ChunkIndex:
     epoch = tx.get("meta", "index_epoch", {"value": 0})["value"]
     rows = tx.connection.execute(select(
         D.chunks.c.id, D.chunks.c.doc_id, D.chunks.c.content_hash, D.chunks.c.start, D.chunks.c.end, D.chunks.c.heading,
-        D.chunks.c.text, D.chunks.c.text_hash, D.documents.c.title
+        D.chunks.c.text, D.chunks.c.text_hash, D.documents.c.title, D.chunks.c.risk, D.chunks.c.flags
     ).join(D.documents, D.documents.c.id == D.chunks.c.doc_id).order_by(D.chunks.c.doc_id, D.chunks.c.seq)).all()
     vecs = {r.text_hash: r for r in tx.connection.execute(select(D.embeddings).where(D.embeddings.c.model == embedder.name))}
     dim = next((r.dim for r in vecs.values()), embedder.dim or 1)
     chunks, mat = [], np.zeros((len(rows), dim), dtype=np.float32)
-    for i, (cid, did, ch, s, e, heading, text, th, title) in enumerate(rows):
+    for i, (cid, did, ch, s, e, heading, text, th, title, risk, flags) in enumerate(rows):
         t = terms(f"{title} {heading} {text}")
-        chunks.append(_Chunk(cid, did, ch, s, e, heading, text, title or "", Counter(t), max(len(t), 1)))
+        chunks.append(_Chunk(cid, did, ch, s, e, heading, text, title or "", Counter(t), max(len(t), 1), risk >= INJECTION_BLOCK or bool(flags)))
         if th in vecs and vecs[th].dim == dim:
             mat[i] = from_bytes(vecs[th].vector, dim)
     return ChunkIndex(chunks, mat, epoch, embedder.name)
@@ -142,6 +145,7 @@ class HybridStore:
     pending: dict[str, dict] = field(default_factory=dict)   # 索引滞后的文档正文，现场切块、只走词法
     history: dict[str, str] = field(default_factory=dict)    # 会话历史引用过的文档正文
     last_debug: dict = field(default_factory=dict)
+    quarantine: bool = True   # 评测里用来关掉“入库隔离”做对照
 
     def _doc(self, m: dict, text: str = "") -> Doc:
         return Doc(m["id"], m["source"], m["title"], text, frozenset(m["acl"]))
@@ -159,20 +163,22 @@ class HybridStore:
         vis = {m["id"]: m for m in self.metas if can_read(identity, self._doc(m))}      # 先过滤
         fresh = frozenset(d for d, m in vis.items() if self.index.has(d, m["content_hash"]))
         lag = [d for d in vis if d not in fresh]
-        chunks, rows = self.index.chunks, self.index.view(fresh).rows
+        chunks, rows = self.index.chunks, self.index.view(fresh, self.quarantine).rows
         vectors = self.index.vectors
         extra: list[_Chunk] = []
         for d in lag:
             doc = self.pending.get(d)
             if doc:
                 for r in chunk_rows(doc):
+                    if self.quarantine and (r["risk"] >= INJECTION_BLOCK or r["flags"]):
+                        continue   # 滞后文档同样先扫描再用
                     t = terms(f"{doc['title']} {r['heading']} {r['text']}")
                     extra.append(_Chunk(r["id"], d, r["content_hash"], r["start"], r["end"], r["heading"], r["text"],
                                         doc["title"], Counter(t), max(len(t), 1)))
         pool = [chunks[i] for i in rows] + extra
         if not pool:
             return []
-        view = self.index.view(fresh) if not extra else _View(pool, list(range(len(pool))))
+        view = self.index.view(fresh, self.quarantine) if not extra else _View(pool, list(range(len(pool))))
         mat = np.vstack([vectors[rows], np.zeros((len(extra), vectors.shape[1]), dtype=np.float32)]) if extra else vectors[rows]
 
         # 多方面的问题拆成子句分别做词法召回（每个子句各自过覆盖率闸门），再与向量召回一起融合

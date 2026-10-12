@@ -11,7 +11,10 @@ CITE = re.compile(r"\[([A-Za-z0-9_.:/\-]+)\]")
 NUMBER = re.compile(r"\d+(?:\.\d+)?")
 
 
-def verify_citations(draft: str, context: list[Doc]) -> tuple[list[str], list[str]]:
+URL = re.compile(r"https?://[^\s)\]>\"']+", re.I)
+
+
+def verify_citations(draft: str, context: list[Doc], urls: bool = True) -> tuple[list[str], list[str]]:
     """返回 (有效引用 ID, 问题列表)；问题列表为空才算通过。"""
     by_id = {d.id: d for d in context}
     valid: list[str] = []
@@ -30,6 +33,10 @@ def verify_citations(draft: str, context: list[Doc]) -> tuple[list[str], list[st
             for n in NUMBER.findall(bare):
                 if n not in support:
                     problems.append(f"unsupported-number:{n}")
+    if urls:
+        # 输出里的链接必须出现在被引资料里：挡住“把内容拼进链接/图片地址外发”这类注入外泄
+        support = " ".join(d.text for d in context)
+        problems += [f"unlisted-url:{u[:40]}" for u in URL.findall(draft) if u not in support]
     if not valid and not problems:
         problems.append("no-citation")
     return valid, problems

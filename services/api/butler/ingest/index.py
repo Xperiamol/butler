@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 
 from .. import database as D
+from ..security.injection import scan
 from .chunking import split_document
 from .embedding import Embedder, to_bytes
 
@@ -37,7 +38,8 @@ def chunk_rows(doc: dict) -> list[dict]:
     rows = []
     for c in split_document(doc["text"]):
         inp = embed_input(doc["title"], c.heading, c.text)
-        rows.append({"id": f"{doc['id']}#{h}:{c.seq}", "doc_id": doc["id"], "content_hash": h, "seq": c.seq,
+        v = scan(c.text)  # 入库时扫描提示注入：命中的块被隔离，不进入任何人的检索结果
+        rows.append({"risk": v.score if v.flagged else min(v.score, 0.499), "flags": ",".join(v.rules), "id": f"{doc['id']}#{h}:{c.seq}", "doc_id": doc["id"], "content_hash": h, "seq": c.seq,
                      "start": c.start, "end": c.end, "tokens": c.tokens, "heading": c.heading, "text": c.text,
                      "text_hash": sha(inp), "_input": inp})
     return rows

@@ -52,7 +52,7 @@ def make_queries(docs, n: int, seed: int) -> list[dict]:
     return out
 
 
-def hybrid_store(docs):
+def hybrid_store(docs, quarantine: bool = True):
     """把文档放进内存库、建索引，返回混合检索 store（评测与基准共用）。"""
     db = Database("sqlite:///:memory:")
     with db.transaction() as tx:
@@ -62,6 +62,7 @@ def hybrid_store(docs):
     stats = index_documents(db, emb)
     with db.transaction() as tx:
         store = hybrid.build_store(tx, emb, hybrid.IndexCache(), [d.id for d in docs])  # 会话历史可取回任意文档的正文
+    store.quarantine = quarantine
     return store, stats
 
 

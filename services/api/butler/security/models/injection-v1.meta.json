@@ -1,0 +1,89 @@
+{
+  "seed": 11,
+  "sizes": {
+    "train": {
+      "neg": 1308,
+      "hn": 270,
+      "pos": 1120
+    },
+    "val": {
+      "neg": 327,
+      "hn": 120,
+      "pos": 700
+    },
+    "test": {
+      "neg": 327,
+      "hn": 120,
+      "pos": 700
+    }
+  },
+  "lofo": {
+    "override": {
+      "recall_model_only": 0.87,
+      "recall_rules_only": 0.44,
+      "recall_cascade": 0.92,
+      "fpr_handbook": 0.0,
+      "fpr_hard_negative": 0.0167
+    },
+    "role": {
+      "recall_model_only": 0.73,
+      "recall_rules_only": 0.39,
+      "recall_cascade": 0.81,
+      "fpr_handbook": 0.0,
+      "fpr_hard_negative": 0.0
+    },
+    "exfil": {
+      "recall_model_only": 0.11,
+      "recall_rules_only": 0.71,
+      "recall_cascade": 0.71,
+      "fpr_handbook": 0.0,
+      "fpr_hard_negative": 0.025
+    },
+    "spoof": {
+      "recall_model_only": 0.88,
+      "recall_rules_only": 0.68,
+      "recall_cascade": 0.96,
+      "fpr_handbook": 0.0031,
+      "fpr_hard_negative": 0.0083
+    },
+    "social": {
+      "recall_model_only": 0.65,
+      "recall_rules_only": 0.68,
+      "recall_cascade": 0.93,
+      "fpr_handbook": 0.0,
+      "fpr_hard_negative": 0.0083
+    },
+    "zh": {
+      "recall_model_only": 0.0,
+      "recall_rules_only": 1.0,
+      "recall_cascade": 1.0,
+      "fpr_handbook": 0.0,
+      "fpr_hard_negative": 0.0167
+    },
+    "obfuscated": {
+      "recall_model_only": 0.82,
+      "recall_rules_only": 0.5,
+      "recall_cascade": 0.85,
+      "fpr_handbook": 0.0,
+      "fpr_hard_negative": 0.025
+    }
+  },
+  "final": {
+    "threshold": 0.5,
+    "recall_in_distribution": 0.987,
+    "recall_cascade": 0.996,
+    "recall_rules_only": 0.629,
+    "fpr_handbook": 0.0,
+    "fpr_handbook_cascade": 0.0,
+    "fpr_hard_negative": 0.025,
+    "fpr_hard_negative_cascade": 0.025,
+    "fpr_hard_negative_rules_only": 0.0
+  },
+  "lofo_mean_recall_cascade": 0.883,
+  "lofo_mean_recall_model_only": 0.58,
+  "training_data": {
+    "negatives": "GitLab handbook (CC BY-SA 4.0) windows + templated hard negatives",
+    "positives": "templated attack families embedded in handbook sentences",
+    "handbook_docs": 545
+  }
+}
