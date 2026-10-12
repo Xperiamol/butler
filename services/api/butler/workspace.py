@@ -504,20 +504,34 @@ def ask(body: AskBody, who=Depends(current)):
     return result
 
 
+class BufferAudit:
+    """模型调用期间不持有数据库锁：审计先缓存，提交时在事务里按序写入哈希链。"""
+
+    def __init__(self):
+        self.payloads: list[dict] = []
+
+    def append(self, payload):
+        self.payloads.append(payload)
+
+
 def _ask(body: AskBody, who):
+    # 1) 短事务：校验身份、取会话/资料/事实快照
     with database.transaction() as tx:
         row = tx.get("member", who.id)
         if not row or not row["active"]:
             raise HTTPException(401, "账号已停用。")
-        who = identity(row)  # Re-read under the same lock as the answer.
+        who = identity(row)
         key = f"{who.id}:{body.session_id}"
         rev = revision(tx, who)
         c = tx.get("conversation", key)
         if c and c["revision"] != rev:
             raise HTTPException(409, "资料或权限已更新，请新建会话。")
+        if c and any(t.get("request_id") == body.request_id for t in c["turns"]):
+            return next(t["answer"] for t in c["turns"] if t.get("request_id") == body.request_id)  # 幂等重试
         if c and len(c["turns"]) >= 30:
             raise HTTPException(409, "此会话已达 30 轮，请新建会话。")
-        session = Session(who.id, c["doc_ids"] if c else [], c["claims"] if c else [])
+        turns_before = len(c["turns"]) if c else 0
+        session = Session(who.id, list(c["doc_ids"]) if c else [], list(c["claims"]) if c else [])
         settings = tx.get("settings", "main")
         options = {}
         judge = KeywordJudge()
@@ -530,24 +544,38 @@ def _ask(body: AskBody, who):
                 raise HTTPException(503, "模型服务必须使用 HTTPS。")
             options["generate"] = RemoteModel(base, key_value, settings["generation_model"], settings["max_tokens"])
             judge = RemoteJudge(RemoteModel(base, key_value, settings["judge_model"], 4096))
-        docs = documents(tx)
+        docs, restricted = documents(tx), facts(tx)
+
+    # 2) 锁外：检索、生成、结论检查。慢模型不再阻塞其他用户的登录、问答和配置
+    buffer, failure = BufferAudit(), None
+    try:
+        a = answer_question(who, body.question, Store(docs), restricted, judge, buffer,
+                            session=session, request_id=body.request_id, **options)
+    except ModelFailure as error:
+        a, failure = None, str(error)
+
+    # 3) 短事务：重新读取身份、权限版本和会话；任何一项变了就丢弃结果，不发出过期授权下生成的答案
+    with database.transaction() as tx:
         audit = PersistentAudit(tx)
-        try:
-            a = answer_question(who, body.question, Store(docs), facts(tx), judge,
-                                audit, session=session, request_id=body.request_id, **options)
-        except ModelFailure as error:
-            # 失败也要留痕；先提交审计再报错（在事务里直接 raise 会整体回滚）
+        if failure:
             audit.append({"event": "ask.failed", "user": who.id, "request_id": body.request_id,
                           "question_hash": question_hash(body.question), "reason": "model_failure"})
-            failure = str(error)
-            a = None
-        if a is None:
             return {"__failure__": failure}
+        row = tx.get("member", who.id)
+        if not row or not row["active"]:
+            raise HTTPException(401, "账号已停用。")
+        now_rev, c = revision(tx, identity(row)), tx.get("conversation", key)
+        if now_rev != rev or (len(c["turns"]) if c else 0) != turns_before:
+            audit.append({"event": "ask.discarded", "user": who.id, "request_id": body.request_id,
+                          "reason": "permissions_or_session_changed"})
+            return {"__failure__": "资料、权限或会话在回答期间发生变化，请重试。"}
+        for payload in buffer.payloads:
+            audit.append(payload)
         answer = {"text": a.text, "citations": cite([d for d in docs if d.id in a.citations]),
                   "latency_ms": a.latency_ms, "data_source": "fake" if MODE == "demo" else "workspace"}
         tx.put("conversation", key, {"id": body.session_id, "owner": who.id,
                "title": body.question[:40] if not c else c["title"], "updated": time.time(), "revision": rev,
-               "turns": (c["turns"] if c else []) + [{"question": body.question, "answer": answer}],
+               "turns": (c["turns"] if c else []) + [{"question": body.question, "request_id": body.request_id, "answer": answer}],
                "doc_ids": session.doc_ids, "claims": session.claims})
         return answer
 

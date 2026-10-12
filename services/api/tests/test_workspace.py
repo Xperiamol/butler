@@ -213,3 +213,41 @@ def test_failed_ask_is_audited_and_scoped_view_hides_restricted_fact_ids(db, mon
     sara = client.get("/workspace/audit", headers=headers()).json()
     assert "f-reorg" in str(sara)
     assert any(e["payload"].get("event") == "audit.viewed" for e in sara["entries"])
+
+
+def test_slow_model_does_not_hold_the_database_lock_and_stale_result_is_discarded(db, monkeypatch):
+    import threading
+    monkeypatch.setattr(w, "MODE", "demo")
+    original = w.answer_question
+    inside, release, observed = threading.Event(), threading.Event(), {}
+
+    def slow(*args, **kwargs):
+        inside.set()
+        release.wait(5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(w, "answer_question", slow)
+    result = {}
+    t = threading.Thread(target=lambda: result.update(r=ask("ken", "slow")))
+    t.start()
+    assert inside.wait(5)
+    # 模型还在“生成”，其他请求仍能拿到数据库（原先持锁会卡住直到模型返回）
+    got = threading.Event()
+    threading.Thread(target=lambda: (client.get("/workspace/me", headers=headers("alice")), got.set())).start()
+    assert got.wait(3), "读请求被慢模型阻塞"
+    # 回答期间 ken 被撤权：结果必须丢弃，且留下审计
+    client.put("/workspace/members/ken", headers=headers(), json={"role": "contractor", "groups": [], "active": True})
+    release.set()
+    t.join(5)
+    assert result["r"].status_code == 503
+    with db.transaction() as tx:
+        assert any(e["payload"].get("event") == "ask.discarded" for e in tx.all("audit_entry"))
+        assert tx.get("conversation", "ken:slow") is None
+
+
+def test_repeated_request_id_is_idempotent(db):
+    body = {"question": "支付 API 限流是多少？", "session_id": "idem", "request_id": "same"}
+    first = client.post("/workspace/ask", headers=headers("alice"), json=body).json()
+    again = client.post("/workspace/ask", headers=headers("alice"), json=body).json()
+    assert first == again
+    assert len(client.get("/workspace/conversations/idem", headers=headers("alice")).json()["turns"]) == 1
