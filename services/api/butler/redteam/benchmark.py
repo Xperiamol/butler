@@ -182,7 +182,8 @@ def build_cases(chains: list[dict], docs: list[Doc], seed: int, controls: int = 
 
 
 def _ctx(system: str, docs, facts, rules):
-    store = Store(docs)
+    from ..retrieval.eval import hybrid_store
+    store = hybrid_store(docs)[0]
     f = [replace(x, premises=()) for x in facts] if system == "judge" else facts
     return store, f, SimulatedGenerator(rules)
 

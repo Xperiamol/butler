@@ -7,3 +7,6 @@ SQLAlchemy>=2.0,<3
 psycopg[binary]>=3.2,<4
 argon2-cffi>=23.1,<26
 cryptography>=42
+numpy>=1.26
+scikit-learn>=1.4
+joblib>=1.3

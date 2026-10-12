@@ -24,6 +24,9 @@ from .connectors.fake import load_world
 from .database import Database
 from .models import Doc, Fact, Identity
 from . import passwords
+from .ingest.embedding import EmbeddingFailure, HashingEmbedder, RemoteEmbedder
+from .ingest.index import index_documents
+from .retrieval.hybrid import IndexCache, build_store
 from .retrieval.store import Store
 
 ADMIN_ROLES = {"admin", "security"}
@@ -55,6 +58,7 @@ class Settings(StrictBody):
     generation_model: str = Field(default="", max_length=100)
     judge_model: str = Field(default="", max_length=100)
     max_tokens: int = Field(default=1200, ge=256, le=4096)
+    embedding_model: str = Field(default="", max_length=100)  # 空 = 离线哈希嵌入；填写则用远程嵌入服务
 
 
 class MemberBody(StrictBody):
@@ -104,6 +108,38 @@ def documents(tx):
     return [Doc(d["id"], d["source"], d["title"], d["text"], frozenset(d["acl"])) for d in tx.all("document")]
 
 
+INDEX_CACHE = IndexCache()
+
+
+def embedder_for(settings):
+    """远程嵌入需要服务端密钥和配置的模型名；否则用离线哈希嵌入（不外发任何正文）。"""
+    key, model = os.getenv("HUNYUAN_API_KEY"), (settings or {}).get("embedding_model", "")
+    base = os.getenv("HUNYUAN_BASE_URL", "https://api.hunyuan.cloud.tencent.com/v1")
+    if MODE == "enterprise" and key and model and base.startswith("https://"):
+        return RemoteEmbedder(base, key, model)
+    return HashingEmbedder()
+
+
+def visible_docs(tx, who):
+    """可见文档的元数据（不含正文）：状态页、审计范围、来源列表都不需要把全部正文读出来。"""
+    from sqlalchemy import select
+    from . import database as D
+    return [Doc(r.id, r.source, r.title, "", frozenset(r.acl)) for r in tx.connection.execute(
+        select(D.documents.c.id, D.documents.c.source, D.documents.c.title, D.documents.c.acl)) if can_read(who, Doc(r.id, r.source, r.title, "", frozenset(r.acl)))]
+
+
+def reindex(ids=None):
+    """导入/同步之后的索引步骤，放在导入事务之外。向量化失败不影响导入：文档仍可被词法检索到。"""
+    with database.transaction() as tx:
+        embedder = embedder_for(tx.get("settings", "main"))
+    try:
+        return index_documents(database, embedder, ids)
+    except EmbeddingFailure:
+        with database.transaction() as tx:
+            PersistentAudit(tx).append({"event": "index.failed", "reason": "embedding_unavailable"})
+        return None
+
+
 def text_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
@@ -144,6 +180,7 @@ def bootstrap(db):
 
 
 bootstrap(database)
+reindex()
 passwords.bootstrap(database)
 
 
@@ -186,7 +223,14 @@ def revision(tx, who):
 
 
 def cite(docs):
-    return [{"id": d.id, "source": d.source, "title": d.title} for d in docs]
+    out = []
+    for d in docs:
+        item = {"id": d.id, "source": d.source, "title": d.title}
+        if d.spans:  # 引用落到原文位置：前端据此高亮/跳转
+            item["spans"] = [list(x) for x in d.spans]
+            item["heading"] = d.heading
+        out.append(item)
+    return out
 
 
 class PersistentAudit:
@@ -239,11 +283,10 @@ def status(who=Depends(current)):
     with database.transaction() as tx:
         who = checked(tx, who)
         settings = tx.get("settings", "main")
-        docs = documents(tx)
         configured = bool(os.getenv("HUNYUAN_API_KEY") and settings["generation_model"] and settings["judge_model"])
         return {"organization": settings["organization"], "mode": MODE, "auth_mode": passwords.auth_mode(), "database": database.engine.dialect.name,
                 "model_ready": MODE == "demo" or configured,
-                "visible_documents": len([d for d in docs if can_read(who, d)]),
+                "visible_documents": len(visible_docs(tx, who)),
                 "conversations": len([c for c in tx.all("conversation") if c["owner"] == who.id]),
                 "audit_entries": tx.get("meta", "audit_head")["count"] if who.role in AUDIT_ROLES else None,
                 "can_admin": who.role in ADMIN_ROLES, "can_audit": who.role in AUDIT_ROLES}
@@ -423,7 +466,7 @@ def member_put(key: str, body: MemberBody, who=Depends(admin)):
 def sources(who=Depends(current)):
     with database.transaction() as tx:
         who = checked(tx, who)
-        visible = Store(documents(tx)).visible(who)
+        visible = visible_docs(tx, who)
         return {"visible": len(visible), "docs": cite(visible)}
 
 
@@ -473,7 +516,20 @@ def knowledge_import(body: ImportBody, who=Depends(admin)):
         rev = tx.get("meta", "revision")["value"] + 1
         tx.put("meta", "revision", {"value": rev})
         PersistentAudit(tx).append({"event": "knowledge.imported", "user": who.id, "count": len(body.documents)})
-    return {"ok": True, "documents": len(body.documents), "facts": len(body.facts), "revision": rev}
+    stats = reindex([d.id for d in body.documents])
+    return {"ok": True, "documents": len(body.documents), "facts": len(body.facts), "revision": rev,
+            "index": "pending" if stats is None else {"chunks": stats.chunks, "embedded": stats.embedded}}
+
+
+@router.post("/knowledge/reindex")
+def knowledge_reindex(who=Depends(admin)):
+    """换嵌入模型后重建向量；已有 (模型, 内容哈希) 的向量会复用。"""
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+    stats = reindex()
+    with database.transaction() as tx:
+        PersistentAudit(tx).append({"event": "knowledge.reindexed", "user": who.id})
+    return {"ok": stats is not None, "chunks": stats.chunks if stats else 0}
 
 
 @router.get("/conversations")
@@ -547,12 +603,13 @@ def _ask(body: AskBody, who):
                 raise HTTPException(503, "模型服务必须使用 HTTPS。")
             options["generate"] = RemoteModel(base, key_value, settings["generation_model"], settings["max_tokens"])
             judge = RemoteJudge(RemoteModel(base, key_value, settings["judge_model"], 4096))
-        docs, restricted = documents(tx), facts(tx)
+        restricted = facts(tx)
+        store = build_store(tx, embedder_for(settings), INDEX_CACHE, session.doc_ids)
 
     # 2) 锁外：检索、生成、结论检查。慢模型不再阻塞其他用户的登录、问答和配置
     buffer, failure = BufferAudit(), None
     try:
-        a = answer_question(who, body.question, Store(docs), restricted, judge, buffer,
+        a = answer_question(who, body.question, store, restricted, judge, buffer,
                             session=session, request_id=body.request_id, **options)
     except ModelFailure as error:
         a, failure = None, str(error)
@@ -574,7 +631,7 @@ def _ask(body: AskBody, who):
             return {"__failure__": "资料、权限或会话在回答期间发生变化，请重试。"}
         for payload in buffer.payloads:
             audit.append(payload)
-        answer = {"text": a.text, "citations": cite([d for d in docs if d.id in a.citations]),
+        answer = {"text": a.text, "citations": cite(a.sources),
                   "latency_ms": a.latency_ms, "data_source": "fake" if MODE == "demo" else "workspace"}
         tx.put("conversation", key, {"id": body.session_id, "owner": who.id,
                "title": body.question[:40] if not c else c["title"], "updated": time.time(), "revision": rev,
@@ -587,7 +644,7 @@ def _ask(body: AskBody, who):
 def audit_list(who=Depends(auditor)):
     with database.transaction() as tx:
         who = checked(tx, who, AUDIT_ROLES)
-        visible = {d.id for d in Store(documents(tx)).visible(who)}
+        visible = {d.id for d in visible_docs(tx, who)}
         readable_facts = {f.id for f in facts(tx) if can_read(who, f)}
         full = who.role in ADMIN_ROLES
         length = tx.count("audit_entry")

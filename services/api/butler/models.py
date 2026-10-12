@@ -17,6 +17,8 @@ class Doc:
     title: str
     text: str
     acl: frozenset[str]  # 可读该文档的组；空集 = 无人可读（未知即拒绝）
+    spans: tuple[tuple[int, int], ...] = ()  # 检索返回的是原文的哪几段 [start, end)，引用据此定位；空 = 整篇
+    heading: str = ""
 
 
 @dataclass(frozen=True)
@@ -40,3 +42,4 @@ class Answer:
     latency_ms: float = 0.0
     guard_ms: float = 0.0  # 结论检查额外耗时
     data_source: str = "fake"  # UI 必须展示
+    sources: list = field(default_factory=list)  # 实际被引用的文档（含原文位置），供界面展示出处

@@ -22,16 +22,20 @@ _EN_STOP = {"the", "a", "an", "is", "are", "was", "were", "be", "to", "of", "and
 _TOKEN = re.compile(r"[a-z0-9]+|[\u4e00-\u9fff]+")
 
 
-def _bigrams(s: str) -> set[str]:
-    """中文用字符二元组；英文/数字按词（去常见虚词），中英混合的问题两边都能命中。"""
-    grams: set[str] = set()
+def terms(s: str) -> list[str]:
+    """中文用字符二元组；英文/数字按词（去常见虚词），中英混合的问题两边都能命中。保留重复，供 BM25 用。"""
+    out: list[str] = []
     for tok in _TOKEN.findall(s.lower()):
         if tok[0] < "\u4e00":
             if len(tok) > 1 and tok not in _EN_STOP:
-                grams.add(tok)
+                out.append(tok)
         else:
-            grams |= {tok[i:i + 2] for i in range(len(tok) - 1) if not (tok[i] in _STOP and tok[i + 1] in _STOP)}
-    return grams
+            out += [tok[i:i + 2] for i in range(len(tok) - 1) if not (tok[i] in _STOP and tok[i + 1] in _STOP)]
+    return out
+
+
+def _bigrams(s: str) -> set[str]:
+    return set(terms(s))
 
 
 class Store:

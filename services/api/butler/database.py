@@ -21,7 +21,8 @@ records = Table("workspace_records", metadata,
 
 documents = Table("documents", metadata,
                   Column("id", String(256), primary_key=True), Column("source", String(32), index=True),
-                  Column("content_hash", String(64)), Column("data", JSON, nullable=False))
+                  Column("content_hash", String(64)), Column("title", String(500)), Column("acl", JSON),
+                  Column("data", JSON, nullable=False))
 facts = Table("facts", metadata,
               Column("id", String(256), primary_key=True), Column("source_doc", String(256), index=True),
               Column("data", JSON, nullable=False))
@@ -55,7 +56,8 @@ sync_jobs = Table("sync_jobs", metadata,
 
 # kind -> (表, 从记录中取出索引列的函数)
 TYPED = {
-    "document": (documents, lambda d: {"source": d.get("source"), "content_hash": d.get("content_hash")}),
+    "document": (documents, lambda d: {"source": d.get("source"), "content_hash": d.get("content_hash"),
+                                             "title": d.get("title"), "acl": d.get("acl")}),
     "fact": (facts, lambda d: {"source_doc": d.get("source_doc")}),
     "member": (members, lambda d: {"active": bool(d.get("active"))}),
     "conversation": (conversations, lambda d: {"owner": d.get("owner"), "updated": d.get("updated", 0.0)}),
@@ -140,6 +142,24 @@ class Transaction:
         self.connection.execute(records.delete().where(records.c.kind == kind, records.c.id == key))
 
 
+def ensure_columns(engine) -> None:
+    """为早期版本创建的分表补列（create_all 不会改已有表），并回填新列。"""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    with engine.begin() as connection:
+        for table in metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name not in have:
+                    connection.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(engine.dialect)}'))
+        for kind, (table, extract) in TYPED.items():
+            if kind == "document":
+                for key, data in connection.execute(select(table.c.id, table.c.data).where(table.c.acl.is_(None))).all():
+                    connection.execute(table.update().where(table.c.id == key).values(**extract(data)))
+
+
 def migrate_legacy(connection) -> int:
     """把旧通用表中的业务记录搬到分表；重复执行无副作用。"""
     moved = 0
@@ -167,6 +187,7 @@ class Database:
         self.engine = create_engine(url, **options)
         self.lock = threading.RLock()
         metadata.create_all(self.engine)
+        ensure_columns(self.engine)
         with self.engine.begin() as connection:
             insert = _insert(connection)
             connection.execute(insert(records).values(kind="meta", id="lock", data={}).on_conflict_do_nothing())

@@ -29,7 +29,7 @@ def ask(who, session="test", question="支付 API 限流是多少？"):
 def test_configuration_access_and_persistence(db):
     assert client.get("/workspace/settings").status_code == 401
     assert client.get("/workspace/settings", headers=headers("ken")).status_code == 403
-    value = {"organization": "测试工作区", "generation_model": "model-a", "judge_model": "model-b", "max_tokens": 800}
+    value = {"organization": "测试工作区", "generation_model": "model-a", "judge_model": "model-b", "max_tokens": 800, "embedding_model": ""}
     assert client.put("/workspace/settings", headers=headers(), json=value).status_code == 200
     restarted = Database(str(db.engine.url))
     with restarted.transaction() as tx:
@@ -251,3 +251,36 @@ def test_repeated_request_id_is_idempotent(db):
     again = client.post("/workspace/ask", headers=headers("alice"), json=body).json()
     assert first == again
     assert len(client.get("/workspace/conversations/idem", headers=headers("alice")).json()["turns"]) == 1
+
+
+def test_import_indexes_chunks_and_citation_carries_source_position(db):
+    long_text = "# 差旅\n\n" + "办公室绿植由行政统一养护。" * 80 + "\n\n## 海外\n\n欧洲一线城市住宿每晚上限为 180 欧元，需附发票。\n\n" + "年会筹备工作由行政负责。" * 80
+    body = {"documents": [{"id": "travel-long", "source": "upload", "title": "差旅制度", "text": long_text, "acl": ["eng"]}], "facts": []}
+    r = client.post("/workspace/knowledge/import", headers=headers(), json=body)
+    assert r.status_code == 200 and r.json()["index"]["chunks"] >= 2
+    a = ask("alice", "idx", "欧洲住宿每晚上限是多少欧元？").json()
+    cite = next(c for c in a["citations"] if c["id"] == "travel-long")
+    assert cite["spans"] and cite["heading"].endswith("海外")
+    start, end = cite["spans"][0]
+    assert "180 欧元" in long_text[start:end]
+
+
+def test_embedding_outage_does_not_fail_import_and_doc_is_still_searchable(db, monkeypatch):
+    from butler.ingest.embedding import EmbeddingFailure
+
+    class Down:
+        name, dim = "down", 4
+
+        def embed(self, texts):
+            raise EmbeddingFailure("down")
+
+    monkeypatch.setattr(w, "embedder_for", lambda settings: Down())
+    body = {"documents": [{"id": "late", "source": "upload", "title": "停车须知", "text": "访客停车证由前台在到访时发放。", "acl": ["eng"]}], "facts": []}
+    r = client.post("/workspace/knowledge/import", headers=headers(), json=body)
+    assert r.status_code == 200 and r.json()["index"] == "pending"
+    with db.transaction() as tx:
+        assert any(e["payload"].get("event") == "index.failed" for e in tx.all("audit_entry"))
+    monkeypatch.setattr(w, "embedder_for", lambda settings: w.HashingEmbedder())
+    assert "late" in [c["id"] for c in ask("alice", "late", "访客停车证怎么领？").json()["citations"]]  # 索引滞后时词法兜底
+    assert client.post("/workspace/knowledge/reindex", headers=headers()).json()["ok"]
+    assert client.post("/workspace/knowledge/reindex", headers=headers("ken")).status_code == 403

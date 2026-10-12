@@ -102,5 +102,5 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
                   "docs": cited, "degraded": status == "degraded", "status": status, "request_id": request_id,
                   "answer_digest": hashlib.sha256(text.encode()).hexdigest()[:16], "event": "ask",
                   "blocked_facts": [f.id for f in hits]})  # 只记 ID，不记内容
-    return Answer(text=text, citations=cited, degraded=status in ("degraded", "refused"), status=status, blocked_facts=[f.id for f in hits],
+    return Answer(text=text, citations=cited, sources=[d for d in context if d.id in set(cited)], degraded=status in ("degraded", "refused"), status=status, blocked_facts=[f.id for f in hits],
                   latency_ms=round((time.perf_counter() - t0) * 1000, 2), guard_ms=round(guard_ms, 2))
