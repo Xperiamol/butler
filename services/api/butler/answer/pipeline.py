@@ -8,7 +8,7 @@ from ..audit.chain import AuditLog
 from ..models import Answer, Doc, Fact, Identity
 from ..retrieval.store import Store
 from .citations import verify_citations
-from .mosaic import Judge, check
+from .mosaic import GuardBudgetExceeded, Judge, check
 from .session import Session
 
 DEGRADED_PREFIX = "以下只列出你有权查看的事实，不做进一步推断：\n"
@@ -79,14 +79,18 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
         if guard and status == "answered":
             # 把本会话已放行的回答和新草稿一起检查，防止分多轮拼出结论
             prior = session.claims if session else []
-            hits = check(identity, "\n".join(prior + [draft]), all_facts, judge)
-            if hits:
-                degraded = facts_only(context)
-                # 降级文本同样是“要发出的答案”，必须重新检查；仍触及则统一拒答
-                if check(identity, "\n".join(prior + [degraded]), all_facts, judge):
-                    text, status, cited = SAFE_REFUSAL, "refused", []
-                else:
-                    text, status, cited = degraded, "degraded", [d.id for d in context]
+            try:
+                hits = check(identity, "\n".join(prior + [draft]), all_facts, judge)
+                if hits:
+                    degraded = facts_only(context)
+                    # 降级文本同样是“要发出的答案”，必须重新检查；仍触及则统一拒答
+                    if check(identity, "\n".join(prior + [degraded]), all_facts, judge):
+                        text, status, cited = SAFE_REFUSAL, "refused", []
+                    else:
+                        text, status, cited = degraded, "degraded", [d.id for d in context]
+            except GuardBudgetExceeded:
+                # 检查范围超出预算：不能当作“没问题”放行
+                text, status, cited, hits = SAFE_REFUSAL, "refused", [], []
         guard_ms = (time.perf_counter() - g0) * 1000
 
     if session is not None:
