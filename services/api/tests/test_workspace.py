@@ -115,15 +115,15 @@ def test_enterprise_generation_and_checking_are_separate_and_fail_closed(db, mon
         content = json.loads(body["messages"][1]["content"])
         requests.append((body["model"], content))
         if body["model"] == "generate":
-            reply = "支付组将被裁撤。"
+            reply = f"支付组将被裁撤。[{content['documents'][0]['id']}]"
         else:
-            reply = "not json" if fail else json.dumps({f["id"]: f["id"] == "f-reorg" for f in content["restricted_facts"]})
+            reply = "not json" if fail else json.dumps({f["id"]: f["id"] == "f-reorg" and "裁撤" in content["answer"] for f in content["restricted_facts"]})
         return httpx.Response(200, json={"choices": [{"message": {"content": reply}}]}, request=httpx.Request("POST", url))
 
     monkeypatch.setattr(httpx, "post", complete)
     response = ask("ken", "remote", "Payments 团队 Q4 预算为 0，供应商合同又暂停，这意味着什么？")
     assert response.status_code == 200 and "裁撤" not in response.json()["text"]
-    assert [name for name, _ in requests] == ["generate", "check"]
+    assert [name for name, _ in requests] == ["generate", "check", "check"]  # 降级文本再检查一次
     assert "drive-hr-1" not in {d["id"] for d in requests[0][1]["documents"]}
     assert "f-reorg" in {f["id"] for f in requests[1][1]["restricted_facts"]}
     fail = True
@@ -161,3 +161,18 @@ def test_enterprise_boundary_and_empty_workspace(tmp_path, monkeypatch):
     assert client.get("/workspace/settings", headers=employee_headers).status_code == 403
     assert client.post("/workspace/ask", headers=employee_headers, json={"question": "你好", "session_id": "x"}).status_code == 503
     fresh.engine.dispose()
+
+
+def test_fact_expires_when_source_text_changes(db):
+    doc = {"id": "budget", "source": "upload", "title": "预算", "text": "正文预算 100 万", "acl": ["security"]}
+    fact = {"id": "f-budget", "source_doc": "budget", "statement": "预算 100 万"}
+    assert client.post("/workspace/knowledge/import", headers=headers(), json={"documents": [doc], "facts": [fact]}).status_code == 200
+    # 只改 ACL、正文不变：事实保留
+    assert client.post("/workspace/knowledge/import", headers=headers(), json={"documents": [{**doc, "acl": ["eng"]}], "facts": []}).status_code == 200
+    with db.transaction() as tx:
+        assert "f-budget" in [f.id for f in w.facts(tx)]
+    # 正文改成 200 万且没有重新登记事实：旧的 100 万事实必须消失
+    new = {**doc, "text": "正文预算 200 万"}
+    assert client.post("/workspace/knowledge/import", headers=headers(), json={"documents": [new], "facts": []}).status_code == 200
+    with db.transaction() as tx:
+        assert tx.get("fact", "f-budget") is None and "f-budget" not in [f.id for f in w.facts(tx)]

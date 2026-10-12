@@ -100,8 +100,15 @@ def documents(tx):
     return [Doc(d["id"], d["source"], d["title"], d["text"], frozenset(d["acl"])) for d in tx.all("document")]
 
 
+def text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
 def facts(tx):
-    return [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f.get("keywords", []))) for f in tx.all("fact")]
+    # 事实绑定来源正文的版本：正文变了而事实没重新登记，旧事实不再参与检查也不再有效
+    current = {d["id"]: d.get("content_hash") or text_hash(d["text"]) for d in tx.all("document")}
+    return [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f.get("keywords", []))) for f in tx.all("fact")
+            if f["source_doc"] in current and f.get("content_hash", current[f["source_doc"]]) == current[f["source_doc"]]]
 
 
 def bootstrap(db):
@@ -431,20 +438,32 @@ def knowledge_import(body: ImportBody, who=Depends(admin)):
         docs = {d["id"]: d for d in tx.all("document")}
         if len({d.id for d in body.documents}) != len(body.documents) or len({f.id for f in body.facts}) != len(body.facts):
             raise HTTPException(422, "同一次导入不能包含重复编号。")
+        changed_docs: set[str] = set()
         for doc in body.documents:
             data = doc.model_dump()
             data["acl"] = sorted({g.strip() for g in doc.acl if g.strip()})
             if not data["acl"]:
                 raise HTTPException(422, "资料必须设置可读权限组。")
+            data["content_hash"] = text_hash(doc.text)
+            old = docs.get(doc.id)
+            if old and (old.get("content_hash") or text_hash(old["text"])) != data["content_hash"]:
+                changed_docs.add(doc.id)
             docs[doc.id] = data
             tx.put("document", doc.id, data)
+        supplied = {f.id for f in body.facts}
+        for fact in tx.all("fact"):
+            # 正文已变：旧版本派生的事实整体失效，只保留本次重新登记的
+            if fact["source_doc"] in changed_docs and fact["id"] not in supplied:
+                tx.delete("fact", fact["id"])
         for fact in body.facts:
             if fact.source_doc not in docs:
                 raise HTTPException(422, "受限事实必须关联已有资料。")
-            tx.put("fact", fact.id, {**fact.model_dump(), "acl": docs[fact.source_doc]["acl"], "keywords": []})
+            tx.put("fact", fact.id, {**fact.model_dump(), "acl": docs[fact.source_doc]["acl"], "keywords": [],
+                                 "content_hash": docs[fact.source_doc]["content_hash"]})
         # Updating a source ACL must also update all inherited fact ACLs.
         for fact in tx.all("fact"):
-            tx.put("fact", fact["id"], {**fact, "acl": docs[fact["source_doc"]]["acl"]})
+            if fact["source_doc"] in docs:
+                tx.put("fact", fact["id"], {**fact, "acl": docs[fact["source_doc"]]["acl"]})
         rev = tx.get("meta", "revision")["value"] + 1
         tx.put("meta", "revision", {"value": rev})
         PersistentAudit(tx).append({"event": "knowledge.imported", "user": who.id, "count": len(body.documents)})
