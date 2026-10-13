@@ -2,7 +2,7 @@
 
 连“结论”也管的企业 AI 助手。Tencent Cloud AI CAN DO IT Hackathon · Aspire 赛道。
 
-设计目标：来源权限约束、结论级防护与可独立验证的审计。当前版本仍是应用原型，尚未完成平台接入、切块、向量化和真实模型验收。
+设计目标：来源权限约束、结论级防护与可独立验证的审计。当前版本的数据管线（切块、混合检索、同步、注入检测、前提发现、语义判官、签名审计）已实现并有测试与评测；**尚未完成：托管平台接入、真实大模型与真实多语言嵌入的验收、前端对应界面。**所有“泄露”数字来自离线模拟生成器，见[独立评测](docs/independent-eval.md)。
 
 ## 当前实现状态
 
@@ -18,7 +18,7 @@
 | 独立评测 | 手写评测集 `seed/eval/`（开发/测试切分，测试集只能跑一次）与结果见[独立评测](docs/independent-eval.md) |
 | 生成与结论检查 | 企业接口已写，真实模型待联调。已有：引用核验（编号与数字）、降级文本复核、事实绑定正文版本、依赖闭包检查、级联候选筛选（超预算拒答） |
 | 审计 | 库内哈希链 + Ed25519 签名检查点导出 + 独立验证命令行（`python -m butler.audit.verify_cli`）；失败请求、审计查看均留痕 |
-| 红队 | 30+30 离线用例，另有公开语料基准（真实手册背景 + 种子生成拼图链，独立评分器），见[基准说明](docs/benchmark.md)；生成器仍是离线模拟，不是实模结果 |
+| 红队与评测 | 30+30 离线用例；合成基准（真实手册背景 + 种子生成拼图链，独立评分器，见[基准说明](docs/benchmark.md)）；手写独立评测集（见上）。生成器均是离线模拟，不是实模结果 |
 | 存储 | 业务对象拆成带索引的表（文档、事实、成员、会话、审计、块、向量、同步任务），旧数据启动时幂等迁移 |
 | 部署 | 企业 Compose 文件已有（含 worker）；Docker/PostgreSQL 实际部署未验收 |
 
@@ -30,19 +30,24 @@
 - `services/api` FastAPI 后端（核心逻辑都在 `butler/`）
 - `apps/web` Next.js 前端：演示首页、账号密码登录（可选 OIDC）、工作区概览、问答与会话、知识资料、成员权限、配置中心、审计
 - `seed/tidepool` 虚构公司 Tidepool Pay 的演示数据 + 马赛克攻击评测用例
-- `docs/adr` 设计取舍记录
+- `seed/eval` 手写独立评测集（开发/测试切分）
+- `docs/adr` 设计取舍记录；`docs/*.md` 评测与设计说明
 
 ## 快速开始
 ```bash
 cd services/api
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-pytest -q                       # 权限 / 审计链 / 马赛克评测
+pytest -q                       # 权限 / 审计链 / 检索 / 同步 / 注入 / 评测程序
 uvicorn butler.main:app --reload --port 8000
 
 cd apps/web                     # 另开终端，从项目根目录执行
 npm install && npm run dev      # http://localhost:3000（可用 BUTLER_API 指定后端）
 ```
+
+可选的中文语义能力（语义判官、前提发现 v2、跨语言检索，约 570 MB 词向量）：`pip install -r requirements-semantic.txt`；缺失时自动退回关键词/词法路径。训练脚本需要 `requirements-train.txt`。
+
+评测：`python scripts/fetch_eval_handbook.py` 下载固定版本手册，然后 `python -m butler.redteam.eval_set --split dev`（测试集只能跑一次，见[独立评测](docs/independent-eval.md)）。同步 worker：`python -m butler.workers.run`。
 
 前端入口：`/` 公开演示；`/login` 登录；`/workspace/overview` 工作区概览；`/workspace` 问答与持久化会话；`/workspace/knowledge` 资料导入；`/workspace/members` 成员权限；`/workspace/settings` 配置中心；`/workspace/audit` 审计。管理页仅 admin / security 可访问，审计另向 auditor 开放。
 
@@ -50,7 +55,7 @@ npm install && npm run dev      # http://localhost:3000（可用 BUTLER_API 指�
 
 默认 `BUTLER_MODE=demo`：后台配置、资料、会话与审计保存在 `.runtime/workspace-demo.sqlite`，公开演示仍使用独立内存数据。登录页支持账号密码，也可展开「体验演示账号」；使用 Sara 在「成员与权限」创建本地账号。可用 `BUTLER_DEMO_DATABASE_URL` 指定演示数据库。企业模式使用 PostgreSQL 和内部服务凭据，默认账号密码登录：首次设置 `BUTLER_ADMIN_USERNAME` 与 `BUTLER_ADMIN_PASSWORD`，OIDC 可按需开启。企业模式不加载演示账号或资料；部署文件另启隔离的演示服务供首页使用。
 
-**企业部署和剩余生产验收项见 [企业工作区部署](docs/enterprise-deployment.md)。** 部署文件为 `infra/compose.enterprise.yml`。密钥由服务端环境管理，后台只保存非敏感运行配置。当前资料接入支持带 ACL 的 JSON 导入，平台自动同步尚未实现。
+**企业部署和剩余生产验收项见 [企业工作区部署](docs/enterprise-deployment.md)。** 部署文件为 `infra/compose.enterprise.yml`。密钥由服务端环境管理，后台只保存非敏感运行配置。资料接入支持带 ACL 的 JSON 导入和 Git 仓库同步（`/workspace/sync/*` 与 `python -m butler.workers.run`），托管平台适配器尚未实现。
 
 演示接口：`POST /ask` · `POST /compare` · `GET /sources` · `GET /audit` · `GET /audit/verify` · `GET /eval` · `GET /eval/cases`。企业 API 关闭这些旧入口，使用服务端绑定身份的 `/workspace/*` 接口；浏览器通过 Next.js `/api/workspace/*` 访问。`/audit/tamper`、`/demo/reset` 仅供隔离的演示数据使用。
 
