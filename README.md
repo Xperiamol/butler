@@ -22,7 +22,7 @@
 | 存储 | 业务对象拆成带索引的表（文档、事实、成员、会话、审计、块、向量、同步任务），旧数据启动时幂等迁移 |
 | 部署 | 企业 Compose 文件已有（含 worker）；Docker/PostgreSQL 实际部署未验收 |
 
-逐项证据、已复现缺陷及建设顺序见[实现核查与优化顺序](docs/implementation-audit.md)。原始长篇方案移至[设计提案](docs/design-proposal.md)，其中的目录与功能描述表示目标，不代表已完成。
+逐项证据、已复现缺陷及建设顺序见[实现核查与优化顺序](docs/implementation-audit.md)；威胁模型与每项防护的证据强度见[威胁模型](docs/threat-model.md)。原始长篇方案移至[设计提案](docs/design-proposal.md)，其中的目录与功能描述表示目标，不代表已完成。
 
 团队开发按[两人分工与接口交接](docs/WORKSPLIT.md)推进：A 负责数据、检索与同步，B 负责回答、安全、审计与应用对接。
 
