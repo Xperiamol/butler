@@ -1,0 +1,7 @@
+# 可选：中文语义能力（语义判官、前提发现 v2、词典式跨语言检索）。缺少时系统自动退回词法/关键词路径。
+-r requirements.txt
+jieba>=0.42
+pycccedict>=1.1
+spacy>=3.7,<4
+# 中文词向量（50 万词，约 570 MB，GitHub 发布资产）：
+https://github.com/explosion/spacy-models/releases/download/zh_core_web_lg-3.8.0/zh_core_web_lg-3.8.0-py3-none-any.whl

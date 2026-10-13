@@ -48,6 +48,12 @@ class Corpus:
         return {t: self.idf[t] for t in c if t in self.idf and math.exp(self.idf[t]) - 1 >= self.n / cut}
 
 
+def sem_features(enc, cand_text: str, statement: str, idf: dict | None = None) -> list[float]:
+    from ..answer.semantic import pair_features as sem_pair
+    f = sem_pair(enc, cand_text[:300], statement, idf)
+    return [f[i] for i in SEM_IDX]
+
+
 def pair_features(corpus: Corpus, secret_tf: Counter, stmt_tf: Counter, secret_emb: np.ndarray, cand_idx: int,
                   cand_text: str, rank: int) -> list[float]:
     cand = corpus.tf[cand_idx]
@@ -67,23 +73,44 @@ def pair_features(corpus: Corpus, secret_tf: Counter, stmt_tf: Counter, secret_e
             dot / (ns * nc), emb, math.log1p(stmt_shared), top3, float(bool(rarest) and rarest[0] in rc)]
 
 
+SEM_IDX = [0, 1, 2, 3, 14, 16, 12]      # semantic.pair_features 里取哪几个：均值余弦、软覆盖、调和、加权覆盖、SIF 余弦、对齐比例
+SEM_NAMES = ["sem_mean_cos", "sem_c2a", "sem_a2c", "sem_h", "sem_cover_w", "sem_sif", "sem_align50"]
+
+
 @dataclass
 class Model:
     coef: list[float]
     intercept: float
     threshold: float
+    mean: list[float] | None = None     # 有 mean/std 的是带语义特征的 v2
+    std: list[float] | None = None
+    quorum: int = 0                     # >0：自动发现的前提不要求"全部"暴露，只要求暴露其中的 quorum 份
+
+    @property
+    def semantic(self) -> bool:
+        return self.mean is not None
 
     def prob(self, f: list[float]) -> float:
+        if self.mean is not None:
+            f = [(x - m) / sd for x, m, sd in zip(f, self.mean, self.std)]
         z = self.intercept + sum(c * x for c, x in zip(self.coef, f))
         return 1 / (1 + math.exp(-max(min(z, 30), -30)))
 
 
 @lru_cache(maxsize=1)
-def load_model(path: Path = MODEL_PATH) -> Model | None:
+def load_model(path: Path | None = None) -> Model | None:
+    """带语义特征的 v2（需要中文词向量）优先；词向量不可用时退回 v1（只用词法特征）。"""
+    if path is None:
+        v2 = MODEL_PATH.with_name("premises-v2.json")
+        if v2.exists():
+            from ..answer.semantic import shared_encoder
+            if shared_encoder().available():
+                path = v2
+        path = path or MODEL_PATH
     if not Path(path).exists():
         return None
     d = json.loads(Path(path).read_text())
-    return Model(d["coef"], d["intercept"], d["threshold"])
+    return Model(d["coef"], d["intercept"], d["threshold"], d.get("mean"), d.get("std"), d.get("quorum", 0))
 
 
 def candidates(corpus: Corpus, secret_tf: Counter, exclude: set[int], k: int = 40) -> list[tuple[int, int]]:
@@ -107,8 +134,25 @@ def eligible_premises(acls: dict[str, set[str]], source_doc: str) -> set[str]:
     return {d for d, a in acls.items() if d != source_doc and a and not a <= secret}
 
 
+def semantic_candidates(enc, corpus: Corpus, texts: dict[str, str], statement: str, skip: set[int], k: int = 30) -> list[int]:
+    """语义预筛：与结论的均值向量余弦最高的 k 篇（词法预筛看不到只用代称的碎片）。"""
+    from ..answer.semantic import cjk_ratio
+    q = enc.embed(statement)[1]
+    if not len(q):
+        return []
+    qv = q.mean(0) / (np.linalg.norm(q.mean(0)) + 1e-9)
+    scored = []
+    for i, did in enumerate(corpus.ids):
+        if i in skip or cjk_ratio(texts[did][:300]) < 0.25:
+            continue
+        m = enc.embed(texts[did][:300])[1]
+        if len(m):
+            scored.append((float((m.mean(0) / (np.linalg.norm(m.mean(0)) + 1e-9)) @ qv), i))
+    return [i for _, i in sorted(scored, reverse=True)[:k]]
+
+
 def discover(corpus: Corpus, texts: dict[str, str], statement: str, source_doc: str, model: Model | None = None,
-             max_premises: int = MAX_PREMISES, eligible: set[str] | None = None) -> list[tuple[str, float]]:
+             max_premises: int = MAX_PREMISES, eligible: set[str] | None = None, enc=None) -> list[tuple[str, float]]:
     """返回 [(资料编号, 概率)]，按概率降序；不含来源文档本身。eligible 给出时只在其中找。"""
     model = model or load_model()
     if model is None or source_doc not in corpus.ids:
@@ -119,9 +163,19 @@ def discover(corpus: Corpus, texts: dict[str, str], statement: str, source_doc: 
     semb = _EMB.embed([secret_text[:2000]])[0]
     out = []
     skip = {src} | ({i for i, d in enumerate(corpus.ids) if d not in eligible} if eligible is not None else set())
-    for i, rank in candidates(corpus, secret_tf, skip):
+    cands = candidates(corpus, secret_tf, skip)
+    if model.semantic:
+        if enc is None:
+            from ..answer.semantic import shared_encoder
+            enc = shared_encoder()
+        seen = {i for i, _ in cands}
+        cands += [(i, 40) for i in semantic_candidates(enc, corpus, texts, statement, skip) if i not in seen]
+    for i, rank in cands:
         did = corpus.ids[i]
-        p = model.prob(pair_features(corpus, secret_tf, stmt_tf, semb, i, texts[did], rank))
+        feats = pair_features(corpus, secret_tf, stmt_tf, semb, i, texts[did], rank)
+        if model.semantic:
+            feats = feats + sem_features(enc, texts[did], statement)
+        p = model.prob(feats)
         if p >= model.threshold:
             out.append((did, round(p, 4)))
     return sorted(out, key=lambda x: -x[1])[:max_premises]

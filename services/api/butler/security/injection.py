@@ -37,6 +37,14 @@ RULES: dict[str, re.Pattern] = {
     "role_hijack_zh": re.compile(r"(你现在是|从现在开始你(是|必须|将)|扮演)[^。\n]{0,30}(没有任何限制|不受(任何)?限制|无所不能|不受规则约束|拥有所有权限)"),
     "hidden_notice_zh": re.compile(r"(给|致|写给)\s*(AI|人工智能|大模型|语言模型|智能)?\s*(助手|机器人|模型)[^。\n]{0,4}(的)?(留言|提示|说明|注意)"),
     "system_spoof_zh": re.compile(r"(系统提示|系统消息|管理员消息)\s*[:：]\s*(新的|最新)?(策略|规则|指令)"),
+    # 称呼自动阅读器/AI 并紧跟指令（中文）
+    "address_ai_zh": re.compile(r"(给|致|写给|供|对|向)[^。\n]{0,6}(AI|人工智能|助手|模型|机器人|自动\w{0,4}(服务|摘要器|阅读器|处理)\w*)[^。\n]{0,30}(请|必须|不要|不得|停用|忽略|执行|回答|列出|发送|披露|展示|写成|输出|照做)|(自动|机器)\w{0,3}(摘要器|阅读器|处理器)\s*请|仅(供)?自动阅读器"),
+    # 称呼 AI（日/西/阿/英）
+    "address_ai_multi": re.compile(r"(AI|アシスタント|モデル)\s*へ|[Pp]ara (el )?(asistente|modelo|IA)\b|إلى مساعد|مساعد الذكاء الاصطناعي|\b[Tt]o (the )?(AI|assistant|language model|model)\b\s*[:,]|\bAn (den )?(KI|Assistenten)\b"),
+    "hide_from_user": re.compile(r"(不要|无需|不必|不用|别)[^。\n]{0,4}(向|给)?(用户|员工|提问者|询问者|对方|读者)[^。\n]{0,6}(展示|说明|提示|解释|告知|透露|提及)|隐去真实|不要把(命令|指令)展示"),
+    "decode_execute": re.compile(r"(base64|Base64|BASE64)[^。\n]{0,30}(解码|decode)|先解码再执行|decode (and|then) (execute|follow)|HTML\s*实体还原|还原并当作[^。\n]{0,8}(规则|指令)", re.I),
+    "always_say": re.compile(r"回答任何[^。\n]{0,8}问题[，,]?\s*(都说|都写|一律|均|都要)|一律回答|无论[^。\n]{0,10}都可(报销|通过|访问)"),
+    "fake_authorization": re.compile(r"扮演已获[^。\n]{0,6}授权|不需要(真实的)?授权记录|(视为|当作)(已)?(获得)?(管理员|最高)权限|已升级为高权限"),
     "hidden_notice": re.compile(r"\b(note|message|instruction) (to|for) (ai|the (ai|llm|language model|assistant|chatbot)|chatbots?|language models?|ai assistants?)\b", re.I),
 }
 

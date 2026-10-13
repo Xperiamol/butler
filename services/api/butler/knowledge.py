@@ -93,7 +93,8 @@ def refresh_auto_premises(tx) -> dict:
         found = P.discover(corpus, texts, f["statement"], f["source_doc"], model,
                            eligible=P.eligible_premises(acls, f["source_doc"]))
         ids = [d for d, _ in found] if len(found) >= 2 else []
-        if ids != f.get("auto_premises", []):
-            tx.put("fact", f["id"], {**f, "auto_premises": ids, "auto_premise_probs": dict(found) if ids else {}})
+        quorum = model.quorum if ids else 0
+        if ids != f.get("auto_premises", []) or quorum != f.get("auto_quorum", 0):
+            tx.put("fact", f["id"], {**f, "auto_premises": ids, "auto_quorum": quorum, "auto_premise_probs": dict(found) if ids else {}})
             updated += 1
     return {"updated": updated}

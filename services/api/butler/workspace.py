@@ -154,7 +154,7 @@ def text_hash(text: str) -> str:
 def facts(tx):
     # 事实绑定来源正文的版本：正文变了而事实没重新登记，旧事实不再参与检查也不再有效
     current = {d["id"]: d.get("content_hash") or text_hash(d["text"]) for d in tx.all("document")}
-    return [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f.get("keywords", [])), tuple(f.get("premises") or f.get("auto_premises", []))) for f in tx.all("fact")
+    return [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f.get("keywords", [])), tuple(f.get("premises") or f.get("auto_premises", [])), 0 if f.get("premises") else f.get("auto_quorum", 0)) for f in tx.all("fact")
             if f["source_doc"] in current and f.get("content_hash", current[f["source_doc"]]) == current[f["source_doc"]]]
 
 

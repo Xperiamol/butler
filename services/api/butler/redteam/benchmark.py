@@ -256,7 +256,7 @@ def auto_facts(docs: list[Doc], facts: list[Fact]) -> tuple[list[Fact], dict]:
         stats["true_total"] += len(f.premises)
         stats["true_found"] += len(set(ids) & set(f.premises))
         stats["false_found"] += len(set(ids) - set(f.premises))
-        out.append(replace(f, premises=use))
+        out.append(replace(f, premises=use, quorum=(P.load_model().quorum if use else 0)))
     return out, stats
 
 

@@ -22,7 +22,7 @@ from collections import defaultdict
 from dataclasses import replace
 from pathlib import Path
 
-from ..answer.mosaic import AnchoredKeywordJudge
+from ..answer.mosaic import AnchoredKeywordJudge, CombinedJudge
 from ..answer.pipeline import answer_question
 from ..answer.session import Session
 from ..audit.chain import AuditLog
@@ -34,7 +34,7 @@ from .benchmark import auto_facts
 ROOT = Path(__file__).resolve().parents[4]
 EVAL = ROOT / "seed" / "eval"
 CORPUS = ROOT / ".corpus" / "handbook"
-SYSTEMS = ("none", "doc", "judge", "butler", "butler_auto")
+SYSTEMS = ("none", "doc", "judge", "semantic", "butler", "butler_auto")
 BLOCKED = ("degraded", "refused", "citation_failed")
 USER = Identity("user", "User", frozenset({"all"}), "contractor")
 EXEC = Identity("exec", "Exec", frozenset({"all", "exec"}), "exec")
@@ -42,6 +42,26 @@ EXEC = Identity("exec", "Exec", frozenset({"all", "exec"}), "exec")
 
 def load(name: str) -> list[dict]:
     return [json.loads(l) for l in (EVAL / f"{name}.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+
+
+def split_of(name: str, row: dict) -> str:
+    """dev / test 切分，确定性、按组：拼图链按**事件类型**（同类型 3 条同在一边，测试集全是没调过的事件类型），
+    正常题按**源文档**（原词题与改述题共享答案，同在一边），注入按手法内的 id 奇偶、无害文本同样奇偶。
+    调参、训练只许用 dev；test 冻结，最后只跑一次（见 --split test）。"""
+    import hashlib
+    if name == "chains":
+        key = row["event_type"]
+    elif name == "normal":
+        key = row["doc"]
+    else:
+        key = ("benign-" if not row["malicious"] else row["technique"] + "-") + str(int(row["id"][1:]) % 2)
+        return "dev" if int(row["id"][1:]) % 2 == 0 else "test"
+    return "dev" if int(hashlib.sha256(("butler-eval-v1|" + key).encode()).hexdigest(), 16) % 2 == 0 else "test"
+
+
+def load_split(name: str, split: str) -> list[dict]:
+    rows = load(name)
+    return rows if split == "all" else [r for r in rows if split_of(name, r) == split]
 
 
 def handbook_docs(corpus: Path = CORPUS) -> list[Doc]:
@@ -119,8 +139,22 @@ def exposed(transcript: str, c: dict) -> bool:
 
 
 def _flags(system: str):
-    guard = system in ("judge", "butler", "butler_auto")
+    guard = system in ("judge", "semantic", "butler", "butler_auto")
     return guard, system.startswith("butler")
+
+
+_SEM = {}
+
+
+def judge_for(system: str):
+    """judge 只用关键词（实体锚定）；semantic 及以上叠加训练出的语义判官（中文词向量可用时）。"""
+    kw = AnchoredKeywordJudge()
+    if system == "judge" or system in ("none", "doc"):
+        return kw
+    if "j" not in _SEM:
+        from ..answer.semantic import try_load
+        _SEM["j"] = try_load()
+    return CombinedJudge(kw, _SEM["j"]) if _SEM["j"] else kw
 
 
 def run_chains(chains, base_store, all_docs, facts, mode: str) -> dict:
@@ -128,11 +162,11 @@ def run_chains(chains, base_store, all_docs, facts, mode: str) -> dict:
     chain_docs, _ = chain_world(chains)
     frags = {c["id"]: [d for d in chain_docs if d.id.startswith(f"f:{c['id']}:")] for c in chains}
     all_groups = frozenset(g for d in all_docs for g in d.acl)
-    judge = AnchoredKeywordJudge()
     out = {}
     for system in SYSTEMS:
         guard, hardened = _flags(system)
-        f = [replace(x, premises=()) for x in facts] if system == "judge" else auto_facts(all_docs, facts)[0] if system == "butler_auto" else facts
+        judge = judge_for(system)
+        f = [replace(x, premises=()) for x in facts] if system in ("judge", "semantic") else auto_facts(all_docs, facts)[0] if system == "butler_auto" else facts
         store = replace(base_store, quarantine=hardened)
         if mode == "oracle":
             store = OracleStore(store, frags)
@@ -166,12 +200,12 @@ def discovery_stats(all_docs, facts) -> dict:
 
 
 def run_normal(normal, base_store, all_docs, facts) -> dict:
-    judge = AnchoredKeywordJudge()
     all_groups = frozenset(g for d in all_docs for g in d.acl)
     gen = lambda q, docs: "\n".join(f"- [{d.id}] {d.text}" for d in docs)
     out = {}
     for system in ("doc", "judge", "butler"):
         guard, hardened = _flags(system)
+        judge = judge_for(system)
         f = [replace(x, premises=()) for x in facts] if system == "judge" else facts
         store = replace(base_store, quarantine=hardened)
         by = defaultdict(lambda: {"n": 0, "hit": 0, "blocked": 0})
@@ -203,8 +237,14 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--out", type=Path)
     p.add_argument("--limit", type=int, help="只跑前 N 条（调试用）")
+    p.add_argument("--split", choices=("dev", "test", "all"), default="dev", help="test 只能跑一次，结果写入 seed/eval/support/test-runs.json")
     a = p.parse_args(argv)
-    chains, normal, injections = load("chains"), load("normal"), load("injections")
+    if a.split in ("test", "all"):
+        lock = EVAL / "support" / "test-runs.json"
+        runs = json.loads(lock.read_text()) if lock.exists() else []
+        if runs and a.split == "test" and not a.limit:
+            raise SystemExit(f"测试集已经在 {runs[-1]['time']} 跑过（提交 {runs[-1]['commit']}）。再跑就不再是留出集；确需重跑请删除 {lock.name} 并在报告里说明。")
+    chains, normal, injections = (load_split(n, a.split) for n in ("chains", "normal", "injections"))
     if a.limit:
         chains, normal, injections = chains[:a.limit], normal[:a.limit * 3], injections[:a.limit * 3]
     hb = handbook_docs()
@@ -216,6 +256,13 @@ def main(argv=None) -> int:
               "chains_natural": run_chains(chains, base, all_docs, facts, "natural"),
               "chains_oracle": run_chains(chains, base, all_docs, facts, "oracle"),
               "normal": run_normal(normal, base, all_docs, facts), "injections": run_injections(injections)}
+    report["_meta"]["split"] = a.split
+    if a.split == "test" and not a.limit:
+        import subprocess, time
+        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
+        lock = EVAL / "support" / "test-runs.json"
+        runs = json.loads(lock.read_text()) if lock.exists() else []
+        lock.write_text(json.dumps(runs + [{"time": time.strftime("%Y-%m-%d %H:%M:%S"), "commit": commit}], ensure_ascii=False, indent=1))
     text = json.dumps(report, ensure_ascii=False, indent=2)
     if a.out:
         a.out.write_text(text, encoding="utf-8")

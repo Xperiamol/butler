@@ -30,6 +30,7 @@ class Fact:
     statement: str
     keywords: tuple[str, ...] = ()
     premises: tuple[str, ...] = ()  # 推出该结论所需的资料编号：用户累计拿到全部前提 = 结论已可推出，与措辞无关
+    quorum: int = 0                 # >0：自动发现的前提只要求暴露其中 quorum 份就拦（人工登记的前提仍要求全部）
 
 
 @dataclass

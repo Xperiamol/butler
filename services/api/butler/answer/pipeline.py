@@ -94,6 +94,8 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
         if guard and status == "answered":
             # 把本会话已放行的回答和新草稿一起检查，防止分多轮拼出结论
             prior = session.claims if session else []
+            if hasattr(judge, "bind"):
+                judge = judge.bind([d.text for d in context])   # 语义判官只看合成的新句子，不看资料原句
             try:
                 hits = check(identity, "\n".join(prior + [draft]), all_facts, judge)
                 if hits:

@@ -53,13 +53,42 @@ class AnchoredKeywordJudge(KeywordJudge):
         return not anchors or any(a in answer for a in anchors)
 
 
+class CombinedJudge:
+    """任一判官认为触及就算触及（宁可多拦）。候选筛选取各判官筛选结果的并集。"""
+
+    def __init__(self, *judges):
+        self.judges = judges
+
+    def entails(self, answer: str, fact: Fact) -> bool:
+        return any(j.entails(answer, fact) for j in self.judges)
+
+    def bind(self, context_texts: list[str]) -> "CombinedJudge":
+        return CombinedJudge(*[j.bind(context_texts) if hasattr(j, "bind") else j for j in self.judges])
+
+    def shortlist(self, answer: str, facts: list[Fact]) -> list[Fact]:
+        seen, out = set(), []
+        for j in self.judges:
+            for f in (j.shortlist(answer, facts) if hasattr(j, "shortlist") else shortlist(answer, facts)):
+                if f.id not in seen:
+                    seen.add(f.id)
+                    out.append(f)
+        return out
+
+
 def restricted_facts(identity: Identity, facts: list[Fact]) -> list[Fact]:
     return [f for f in facts if not can_read(identity, f)]
 
 
 def premise_hits(identity: Identity, facts: list[Fact], exposed_docs: set[str]) -> list[Fact]:
     """依赖闭包检查：某条受限结论的全部前提资料都已（或即将）交到提问者手里。"""
-    return [f for f in restricted_facts(identity, facts) if f.premises and set(f.premises) <= exposed_docs]
+    hits = []
+    for f in restricted_facts(identity, facts):
+        if not f.premises:
+            continue
+        got = len(set(f.premises) & exposed_docs)
+        if (f.quorum and got >= f.quorum) or (not f.quorum and got == len(set(f.premises))):
+            hits.append(f)
+    return hits
 
 
 def _grams(text: str) -> set[str]:
@@ -106,7 +135,7 @@ def check(identity: Identity, answer: str, facts: list[Fact], judge: Judge) -> l
     """返回被答案触及的受限事实（空 = 通过）。"""
     candidates = restricted_facts(identity, facts)
     if len(candidates) > FULL_SCAN_LIMIT:
-        candidates = shortlist(answer, candidates)
+        candidates = judge.shortlist(answer, candidates) if hasattr(judge, "shortlist") else shortlist(answer, candidates)
         if len(candidates) > MAX_CANDIDATES:
             raise GuardBudgetExceeded(f"{len(candidates)} candidates")
     if not candidates:

@@ -89,5 +89,79 @@
     "negatives": "GitLab handbook (CC BY-SA 4.0) windows + templated hard negatives",
     "positives": "templated attack families embedded in handbook sentences",
     "handbook_docs": 545
+  },
+  "dev_augmented": {
+    "note": "加入 dev 切分的中文无害文本做负例、载荷句（多实例选取）做正例；测试集未使用",
+    "folds": 5,
+    "threshold": 0.9468,
+    "per_technique": {
+      "exfil": {
+        "n": 5,
+        "model": 0.8,
+        "rules": 0.2,
+        "cascade": 0.8
+      },
+      "fake_system": {
+        "n": 5,
+        "model": 1.0,
+        "rules": 0.0,
+        "cascade": 1.0
+      },
+      "hidden": {
+        "n": 5,
+        "model": 0.2,
+        "rules": 0.4,
+        "cascade": 0.6
+      },
+      "indirect": {
+        "n": 5,
+        "model": 0.4,
+        "rules": 0.0,
+        "cascade": 0.4
+      },
+      "long_dilute": {
+        "n": 5,
+        "model": 0.8,
+        "rules": 0.0,
+        "cascade": 0.8
+      },
+      "multilingual": {
+        "n": 5,
+        "model": 0.0,
+        "rules": 0.6,
+        "cascade": 0.6
+      },
+      "obfuscated": {
+        "n": 5,
+        "model": 0.4,
+        "rules": 0.4,
+        "cascade": 0.8
+      },
+      "override": {
+        "n": 5,
+        "model": 0.6,
+        "rules": 0.4,
+        "cascade": 1.0
+      },
+      "roleplay": {
+        "n": 5,
+        "model": 0.6,
+        "rules": 0.6,
+        "cascade": 0.8
+      },
+      "social": {
+        "n": 5,
+        "model": 0.4,
+        "rules": 0.0,
+        "cascade": 0.4
+      }
+    },
+    "recall_at_benign_fpr": {
+      "0.0": 0.72,
+      "0.05": 0.72,
+      "0.1": 0.82
+    },
+    "benign_fpr_cascade": 0.05,
+    "malicious_recall_cascade": 0.72
   }
 }

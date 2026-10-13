@@ -21,13 +21,15 @@ from ..ingest.chunking import split_document
 from ..ingest.embedding import Embedder, from_bytes
 from ..ingest.index import chunk_rows, doc_hash
 from ..models import Doc, Identity
+from . import clir
 from .store import _GLUE, _SPLIT, terms
 
 K1, B = 1.2, 0.75
 MIN_COVERAGE = 0.5       # 词法闸门：命中提问信息量的比例，校准见 docs/retrieval-eval.md
 UNSEEN_WEIGHT = 1.0
-CJK_MIN_COVERAGE = 0.25  # 中文二元组覆盖率天然偏低（问法和文档用词不同），单独校准
+CJK_MIN_COVERAGE = 0.45  # 中文二元组覆盖率下限；0.25→0.45：不相关中文资料带回率 71%→32%，中文对照召回 30→28/30（开发集校准）
 CJK_UNSEEN_WEIGHT = 0.25
+CLIR_MIN_COVERAGE = 0.4   # 跨语言概念覆盖率下限，校准见 docs/independent-eval.md
 DENSE_MIN = 0.30         # 向量闸门：余弦下限，校准见 docs/retrieval-eval.md
 POOL = 30
 RRF_K = 60
@@ -66,6 +68,20 @@ class _View:
         self.avg = total / self.n if self.n else 1.0
         self.idf = {t: math.log(1 + self.n / len(p)) for t, p in self.postings.items()}
         self._deletes: dict[str, list[str]] | None = None
+        self._vocab: list[str] | None = None
+
+    def expand(self, word: str) -> list[str]:
+        """英文候选词 → 本视图里实际出现的词形（词干前缀匹配：organize/organization/organizing 互通）。"""
+        import bisect
+        if self._vocab is None:
+            self._vocab = sorted(t for t in self.postings if t.isascii() and t.isalpha())
+        stem = word[:max(4, len(word) - 2)] if len(word) >= 5 else word
+        i = bisect.bisect_left(self._vocab, stem)
+        out = []
+        while i < len(self._vocab) and self._vocab[i].startswith(stem) and len(out) < 12:
+            out.append(self._vocab[i])
+            i += 1
+        return out
 
     def correct(self, term: str) -> str | None:
         """库里没有的词：找编辑距离 1 以内（含相邻换位）的已有词，容忍拼写错误。对称删除法，按需建表。"""
@@ -197,6 +213,8 @@ class HybridStore:
                     t = fix
                 qset.add(t)
             rankings.append(self._lexical(view, pool, qset))
+        if clir.available() and sum(1 for c in query if "\u4e00" <= c <= "\u9fff") >= max(4, len(query) // 3):
+            rankings.append(self._clir(view, pool, query))   # 中文问题 → 英文文档：词典式跨语言检索
         lex = [i for r in rankings for i in r]
         dense = self._dense(mat, query)
         fused: dict[int, float] = {}
@@ -236,6 +254,29 @@ class HybridStore:
                 scores[pos] = scores.get(pos, 0.0) + s
                 matched.setdefault(pos, set()).add(t)
         gated = [p for p in scores if len(matched[p]) >= need and sum(view.idf[t] for t in matched[p]) / mass >= min_cov]
+        return sorted(gated, key=lambda p: -scores[p])[:POOL]
+
+    def _clir(self, view: _View, pool: list[_Chunk], query: str) -> list[int]:
+        """每个中文词是一个"概念"（它的英文候选互为同义）；块命中概念的区分度之和 / 全部概念的区分度之和 = 覆盖率。"""
+        weights, hits = [], []
+        for _, cands in clir.concepts(query):
+            terms_ = {t for w in cands for t in view.expand(w)}
+            terms_ = {t for t in terms_ if t in view.idf}
+            if not terms_:
+                continue
+            weights.append(max(view.idf[t] for t in terms_))
+            hits.append(terms_)
+        if len(weights) < 2:
+            return []
+        scores: dict[int, float] = {}
+        matched: dict[int, int] = {}
+        for w, ts in zip(weights, hits):
+            seen = {pos for t in ts for pos, _ in view.postings.get(t, ())}
+            for pos in seen:
+                scores[pos] = scores.get(pos, 0.0) + w
+                matched[pos] = matched.get(pos, 0) + 1
+        total = sum(weights)
+        gated = [p for p in scores if matched[p] >= 2 and scores[p] / total >= CLIR_MIN_COVERAGE]
         return sorted(gated, key=lambda p: -scores[p])[:POOL]
 
     def _dense(self, mat: np.ndarray, query: str) -> list[int]:

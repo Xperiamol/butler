@@ -1,0 +1,56 @@
+{
+  "candidates": 985,
+  "positives": 69,
+  "C": 0.1,
+  "threshold": 0.5,
+  "cv_by_event_type": {
+    "enabled": 1.0,
+    "fragment_recall": 0.942,
+    "false_premises_per_chain": 0.78,
+    "attacker_blocked_quorum2": 0.963,
+    "attacker_blocked_all": 0.407,
+    "benign_two_other_fragments_blocked_quorum2": 0.0
+  },
+  "all_thresholds": {
+    "0.5": {
+      "enabled": 1.0,
+      "fragment_recall": 0.942,
+      "false_premises_per_chain": 0.78,
+      "attacker_blocked_quorum2": 0.963,
+      "attacker_blocked_all": 0.407,
+      "benign_two_other_fragments_blocked_quorum2": 0.0
+    },
+    "0.6": {
+      "enabled": 0.963,
+      "fragment_recall": 0.913,
+      "false_premises_per_chain": 0.63,
+      "attacker_blocked_quorum2": 0.926,
+      "attacker_blocked_all": 0.519,
+      "benign_two_other_fragments_blocked_quorum2": 0.0
+    },
+    "0.7": {
+      "enabled": 0.889,
+      "fragment_recall": 0.899,
+      "false_premises_per_chain": 0.52,
+      "attacker_blocked_quorum2": 0.889,
+      "attacker_blocked_all": 0.556,
+      "benign_two_other_fragments_blocked_quorum2": 0.0
+    },
+    "0.8": {
+      "enabled": 0.852,
+      "fragment_recall": 0.87,
+      "false_premises_per_chain": 0.3,
+      "attacker_blocked_quorum2": 0.852,
+      "attacker_blocked_all": 0.63,
+      "benign_two_other_fragments_blocked_quorum2": 0.0
+    },
+    "0.9": {
+      "enabled": 0.778,
+      "fragment_recall": 0.812,
+      "false_premises_per_chain": 0.19,
+      "attacker_blocked_quorum2": 0.778,
+      "attacker_blocked_all": 0.593,
+      "benign_two_other_fragments_blocked_quorum2": 0.0
+    }
+  }
+}
