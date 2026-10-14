@@ -1,0 +1,167 @@
+{
+  "seed": 11,
+  "sizes": {
+    "train": {
+      "neg": 7513,
+      "hn": 270,
+      "pos": 1120,
+      "chunks": 1111
+    },
+    "val": {
+      "neg": 1904,
+      "hn": 120,
+      "pos": 700,
+      "chunks": 353
+    },
+    "test": {
+      "neg": 1909,
+      "hn": 120,
+      "pos": 700,
+      "chunks": 384
+    }
+  },
+  "lofo": {
+    "override": {
+      "recall_model_only": 0.82,
+      "recall_rules_only": 0.44,
+      "recall_cascade": 0.99,
+      "fpr_handbook": 0.0,
+      "fpr_hard_negative": 0.0
+    },
+    "role": {
+      "recall_model_only": 0.6,
+      "recall_rules_only": 0.35,
+      "recall_cascade": 0.78,
+      "fpr_handbook": 0.0,
+      "fpr_hard_negative": 0.0
+    },
+    "exfil": {
+      "recall_model_only": 0.0,
+      "recall_rules_only": 0.7,
+      "recall_cascade": 0.7,
+      "fpr_handbook": 0.0,
+      "fpr_hard_negative": 0.0
+    },
+    "spoof": {
+      "recall_model_only": 0.95,
+      "recall_rules_only": 0.74,
+      "recall_cascade": 1.0,
+      "fpr_handbook": 0.0026,
+      "fpr_hard_negative": 0.0
+    },
+    "social": {
+      "recall_model_only": 0.52,
+      "recall_rules_only": 0.63,
+      "recall_cascade": 0.89,
+      "fpr_handbook": 0.0,
+      "fpr_hard_negative": 0.0
+    },
+    "zh": {
+      "recall_model_only": 0.0,
+      "recall_rules_only": 1.0,
+      "recall_cascade": 1.0,
+      "fpr_handbook": 0.0026,
+      "fpr_hard_negative": 0.0
+    },
+    "obfuscated": {
+      "recall_model_only": 0.66,
+      "recall_rules_only": 0.46,
+      "recall_cascade": 0.68,
+      "fpr_handbook": 0.0,
+      "fpr_hard_negative": 0.0
+    }
+  },
+  "unit": "chunk (max over inference windows)",
+  "final": {
+    "threshold": 0.8208,
+    "recall_in_distribution": 0.997,
+    "recall_cascade": 1.0,
+    "recall_rules_only": 0.617,
+    "fpr_handbook": 0.0,
+    "fpr_handbook_cascade": 0.0,
+    "fpr_hard_negative": 0.0,
+    "fpr_hard_negative_cascade": 0.0,
+    "fpr_hard_negative_rules_only": 0.0
+  },
+  "lofo_mean_recall_cascade": 0.863,
+  "lofo_mean_recall_model_only": 0.507,
+  "training_data": {
+    "negatives": "GitLab handbook (CC BY-SA 4.0) windows + templated hard negatives",
+    "positives": "templated attack families embedded in handbook sentences",
+    "handbook_docs": 545
+  },
+  "dev_augmented": {
+    "note": "加入 dev 切分的中文无害文本做负例、载荷句（多实例选取）做正例；测试集未使用",
+    "folds": 5,
+    "threshold": 0.9468,
+    "per_technique": {
+      "exfil": {
+        "n": 5,
+        "model": 0.8,
+        "rules": 0.2,
+        "cascade": 0.8
+      },
+      "fake_system": {
+        "n": 5,
+        "model": 1.0,
+        "rules": 0.0,
+        "cascade": 1.0
+      },
+      "hidden": {
+        "n": 5,
+        "model": 0.2,
+        "rules": 0.4,
+        "cascade": 0.6
+      },
+      "indirect": {
+        "n": 5,
+        "model": 0.4,
+        "rules": 0.0,
+        "cascade": 0.4
+      },
+      "long_dilute": {
+        "n": 5,
+        "model": 0.8,
+        "rules": 0.0,
+        "cascade": 0.8
+      },
+      "multilingual": {
+        "n": 5,
+        "model": 0.0,
+        "rules": 0.6,
+        "cascade": 0.6
+      },
+      "obfuscated": {
+        "n": 5,
+        "model": 0.4,
+        "rules": 0.4,
+        "cascade": 0.8
+      },
+      "override": {
+        "n": 5,
+        "model": 0.6,
+        "rules": 0.4,
+        "cascade": 1.0
+      },
+      "roleplay": {
+        "n": 5,
+        "model": 0.6,
+        "rules": 0.6,
+        "cascade": 0.8
+      },
+      "social": {
+        "n": 5,
+        "model": 0.4,
+        "rules": 0.0,
+        "cascade": 0.4
+      }
+    },
+    "recall_at_benign_fpr": {
+      "0.0": 0.72,
+      "0.05": 0.72,
+      "0.1": 0.82
+    },
+    "benign_fpr_cascade": 0.05,
+    "malicious_recall_cascade": 0.72
+  }
+}

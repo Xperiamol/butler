@@ -29,7 +29,7 @@ def ask(who, session="test", question="支付 API 限流是多少？"):
 def test_configuration_access_and_persistence(db):
     assert client.get("/workspace/settings").status_code == 401
     assert client.get("/workspace/settings", headers=headers("ken")).status_code == 403
-    value = {"organization": "测试工作区", "generation_model": "model-a", "judge_model": "model-b", "max_tokens": 800}
+    value = {"organization": "测试工作区", "generation_model": "model-a", "judge_model": "model-b", "max_tokens": 800, "embedding_model": ""}
     assert client.put("/workspace/settings", headers=headers(), json=value).status_code == 200
     restarted = Database(str(db.engine.url))
     with restarted.transaction() as tx:
@@ -115,15 +115,15 @@ def test_enterprise_generation_and_checking_are_separate_and_fail_closed(db, mon
         content = json.loads(body["messages"][1]["content"])
         requests.append((body["model"], content))
         if body["model"] == "generate":
-            reply = "支付组将被裁撤。"
+            reply = f"支付组将被裁撤。[{content['documents'][0]['id']}]"
         else:
-            reply = "not json" if fail else json.dumps({f["id"]: f["id"] == "f-reorg" for f in content["restricted_facts"]})
+            reply = "not json" if fail else json.dumps({f["id"]: f["id"] == "f-reorg" and "裁撤" in content["answer"] for f in content["restricted_facts"]})
         return httpx.Response(200, json={"choices": [{"message": {"content": reply}}]}, request=httpx.Request("POST", url))
 
     monkeypatch.setattr(httpx, "post", complete)
     response = ask("ken", "remote", "Payments 团队 Q4 预算为 0，供应商合同又暂停，这意味着什么？")
     assert response.status_code == 200 and "裁撤" not in response.json()["text"]
-    assert [name for name, _ in requests] == ["generate", "check"]
+    assert [name for name, _ in requests] == ["generate", "check", "check"]  # 降级文本再检查一次
     assert "drive-hr-1" not in {d["id"] for d in requests[0][1]["documents"]}
     assert "f-reorg" in {f["id"] for f in requests[1][1]["restricted_facts"]}
     fail = True
@@ -161,3 +161,166 @@ def test_enterprise_boundary_and_empty_workspace(tmp_path, monkeypatch):
     assert client.get("/workspace/settings", headers=employee_headers).status_code == 403
     assert client.post("/workspace/ask", headers=employee_headers, json={"question": "你好", "session_id": "x"}).status_code == 503
     fresh.engine.dispose()
+
+
+def test_fact_expires_when_source_text_changes(db):
+    doc = {"id": "budget", "source": "upload", "title": "预算", "text": "正文预算 100 万", "acl": ["security"]}
+    fact = {"id": "f-budget", "source_doc": "budget", "statement": "预算 100 万"}
+    assert client.post("/workspace/knowledge/import", headers=headers(), json={"documents": [doc], "facts": [fact]}).status_code == 200
+    # 只改 ACL、正文不变：事实保留
+    assert client.post("/workspace/knowledge/import", headers=headers(), json={"documents": [{**doc, "acl": ["eng"]}], "facts": []}).status_code == 200
+    with db.transaction() as tx:
+        assert "f-budget" in [f.id for f in w.facts(tx)]
+    # 正文改成 200 万且没有重新登记事实：旧的 100 万事实必须消失
+    new = {**doc, "text": "正文预算 200 万"}
+    assert client.post("/workspace/knowledge/import", headers=headers(), json={"documents": [new], "facts": []}).status_code == 200
+    with db.transaction() as tx:
+        assert tx.get("fact", "f-budget") is None and "f-budget" not in [f.id for f in w.facts(tx)]
+
+
+def test_audit_export_requires_admin_and_signing_key(db, monkeypatch):
+    from butler.audit.checkpoint import generate_keypair
+    from butler.audit.verify_cli import check
+    ask("ken")
+    assert client.get("/workspace/audit/export", headers=headers("amy")).status_code == 403  # 范围受限的审计员拿不到原始链
+    assert client.get("/workspace/audit/export", headers=headers()).status_code == 503  # 没配密钥就不签
+    private, public = generate_keypair()
+    monkeypatch.setenv("BUTLER_AUDIT_SIGNING_KEY", private.decode())
+    out = client.get("/workspace/audit/export", headers=headers()).json()
+    assert check(out["entries"], out["checkpoint"], public) == []
+
+
+def test_failed_ask_is_audited_and_scoped_view_hides_restricted_fact_ids(db, monkeypatch):
+    import httpx
+    monkeypatch.setattr(w, "MODE", "enterprise")
+    monkeypatch.setenv("HUNYUAN_API_KEY", "test-only-not-a-real-key")
+    with db.transaction() as tx:
+        tx.put("settings", "main", {**tx.get("settings", "main"), "generation_model": "g", "judge_model": "j"})
+
+    def boom(url, **options):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(httpx, "post", boom)
+    r = client.post("/workspace/ask", headers=headers("ken"), json={"question": "支付 API 限流是多少？", "session_id": "f", "request_id": "req-1"})
+    assert r.status_code == 503
+    with db.transaction() as tx:
+        failed = [e["payload"] for e in tx.all("audit_entry") if e["payload"].get("event") == "ask.failed"]
+    assert failed and failed[0]["request_id"] == "req-1"
+    monkeypatch.setattr(w, "MODE", "demo")
+    ask("ken", "s2", "Payments 团队 Q4 预算为 0，供应商合同又暂停，这意味着什么？")
+    amy = client.get("/workspace/audit", headers=headers("amy")).json()
+    assert "f-reorg" not in str(amy)
+    sara = client.get("/workspace/audit", headers=headers()).json()
+    assert "f-reorg" in str(sara)
+    assert any(e["payload"].get("event") == "audit.viewed" for e in sara["entries"])
+
+
+def test_slow_model_does_not_hold_the_database_lock_and_stale_result_is_discarded(db, monkeypatch):
+    import threading
+    monkeypatch.setattr(w, "MODE", "demo")
+    original = w.answer_question
+    inside, release, observed = threading.Event(), threading.Event(), {}
+
+    def slow(*args, **kwargs):
+        inside.set()
+        release.wait(5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(w, "answer_question", slow)
+    result = {}
+    t = threading.Thread(target=lambda: result.update(r=ask("ken", "slow")))
+    t.start()
+    assert inside.wait(5)
+    # 模型还在“生成”，其他请求仍能拿到数据库（原先持锁会卡住直到模型返回）
+    got = threading.Event()
+    threading.Thread(target=lambda: (client.get("/workspace/me", headers=headers("alice")), got.set())).start()
+    assert got.wait(3), "读请求被慢模型阻塞"
+    # 回答期间 ken 被撤权：结果必须丢弃，且留下审计
+    client.put("/workspace/members/ken", headers=headers(), json={"role": "contractor", "groups": [], "active": True})
+    release.set()
+    t.join(5)
+    assert result["r"].status_code == 503
+    with db.transaction() as tx:
+        assert any(e["payload"].get("event") == "ask.discarded" for e in tx.all("audit_entry"))
+        assert tx.get("conversation", "ken:slow") is None
+
+
+def test_repeated_request_id_is_idempotent(db):
+    body = {"question": "支付 API 限流是多少？", "session_id": "idem", "request_id": "same"}
+    first = client.post("/workspace/ask", headers=headers("alice"), json=body).json()
+    again = client.post("/workspace/ask", headers=headers("alice"), json=body).json()
+    assert first == again
+    assert len(client.get("/workspace/conversations/idem", headers=headers("alice")).json()["turns"]) == 1
+
+
+def test_import_indexes_chunks_and_citation_carries_source_position(db):
+    long_text = "# 差旅\n\n" + "办公室绿植由行政统一养护。" * 80 + "\n\n## 海外\n\n欧洲一线城市住宿每晚上限为 180 欧元，需附发票。\n\n" + "年会筹备工作由行政负责。" * 80
+    body = {"documents": [{"id": "travel-long", "source": "upload", "title": "差旅制度", "text": long_text, "acl": ["eng"]}], "facts": []}
+    r = client.post("/workspace/knowledge/import", headers=headers(), json=body)
+    assert r.status_code == 200 and r.json()["index"]["chunks"] >= 2
+    a = ask("alice", "idx", "欧洲住宿每晚上限是多少欧元？").json()
+    cite = next(c for c in a["citations"] if c["id"] == "travel-long")
+    assert cite["spans"] and cite["heading"].endswith("海外")
+    start, end = cite["spans"][0]
+    assert "180 欧元" in long_text[start:end]
+
+
+def test_embedding_outage_does_not_fail_import_and_doc_is_still_searchable(db, monkeypatch):
+    from butler.ingest.embedding import EmbeddingFailure
+
+    class Down:
+        name, dim = "down", 4
+
+        def embed(self, texts):
+            raise EmbeddingFailure("down")
+
+    monkeypatch.setattr(w, "embedder_for", lambda settings: Down())
+    body = {"documents": [{"id": "late", "source": "upload", "title": "停车须知", "text": "访客停车证由前台在到访时发放。", "acl": ["eng"]}], "facts": []}
+    r = client.post("/workspace/knowledge/import", headers=headers(), json=body)
+    assert r.status_code == 200 and r.json()["index"] == "pending"
+    with db.transaction() as tx:
+        assert any(e["payload"].get("event") == "index.failed" for e in tx.all("audit_entry"))
+    monkeypatch.setattr(w, "embedder_for", lambda settings: w.HashingEmbedder())
+    assert "late" in [c["id"] for c in ask("alice", "late", "访客停车证怎么领？").json()["citations"]]  # 索引滞后时词法兜底
+    assert client.post("/workspace/knowledge/reindex", headers=headers()).json()["ok"]
+    assert client.post("/workspace/knowledge/reindex", headers=headers("ken")).status_code == 403
+
+
+def test_git_sync_end_to_end_through_the_api_including_revocation(db, tmp_path, monkeypatch):
+    import subprocess
+    monkeypatch.setenv("BUTLER_ALLOW_LOCAL_GIT", "1")
+    monkeypatch.setenv("BUTLER_SYNC_DIR", str(tmp_path / "sync"))
+    repo = tmp_path / "origin"
+    (repo / "hr").mkdir(parents=True)
+
+    def git(*a):
+        subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t", *a], check=True, capture_output=True)
+
+    git("init", "-q", "-b", "main")
+    (repo / "hr" / "leave.md").write_text("# Leave policy\n\nEmployees receive twenty-five vacation days per year.\n")
+    git("add", "-A"), git("commit", "-q", "-m", "init")
+
+    def config(principals):
+        return {"connector": {"type": "git", "name": "wiki", "location": str(repo), "branch": "main",
+                              "rules": [{"prefix": "", "principals": principals}]},
+                "principal_map": {"staff": ["eng"], "contractor": ["contractors"]}, "acl_ttl_seconds": 3600}
+
+    assert client.put("/workspace/sync/config", headers=headers("ken"), json=config(["staff"])).status_code == 403
+    bad = config(["staff"])
+    bad["connector"]["location"] = "ssh://example.com/x.git"
+    assert client.put("/workspace/sync/config", headers=headers(), json=bad).status_code == 422
+    assert client.put("/workspace/sync/config", headers=headers(), json=config(["staff"])).status_code == 200
+    run = client.post("/workspace/sync/run", headers=headers()).json()
+    assert run["processed"]["done"] == 1
+    q = "How many vacation days do employees receive per year?"
+    assert [c["id"] for c in ask("alice", "s1", q).json()["citations"]] == ["wiki:hr/leave.md"]
+    assert ask("ken", "s1", q).json()["citations"] == []
+    status = client.get("/workspace/sync/status", headers=headers()).json()
+    assert status["documents"] == 1 and status["data_source"] == "real" and status["queue"]["by_status"]["done"] == 1
+    # 来源上撤权：只有承包商可读 → 对账发现并生效，Alice 立刻拿不到，旧会话作废
+    assert client.put("/workspace/sync/config", headers=headers(), json=config(["contractor"])).status_code == 200
+    assert client.post("/workspace/sync/run", headers=headers()).json()["reconcile"]["queued"] == 1
+    assert ask("alice", "s2", q).json()["citations"] == []
+    assert client.get("/workspace/conversations/s1", headers=headers("alice")).json()["stale"] is True
+    with db.transaction() as tx:
+        assert any(e["payload"].get("event") == "sync.acl_changed" for e in tx.all("audit_entry"))

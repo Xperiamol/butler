@@ -1,0 +1,200 @@
+{"id": "n001", "doc": "people-group/general-onboarding/onboarding-buddies.md", "question": "Whose responsibility is buddy assignation for a new team member?", "kind": "literal"}
+{"id": "n002", "doc": "people-group/general-onboarding/onboarding-buddies.md", "question": "How long should an ideal onboarding buddy have been at GitLab?", "kind": "literal"}
+{"id": "n003", "doc": "people-group/guidance-on-feedback.md", "question": "What ratio of positive to constructive feedback is recommended?", "kind": "literal"}
+{"id": "n004", "doc": "people-group/guidance-on-feedback.md", "question": "Should I wait until performance reviews to deliver feedback?", "kind": "literal"}
+{"id": "n005", "doc": "people-group/360-feedback.md", "question": "What tenure is required for 360 feedback?", "kind": "literal"}
+{"id": "n006", "doc": "people-group/360-feedback.md", "question": "How many feedback providers should I recommend for 360 feedback?", "kind": "literal"}
+{"id": "n007", "doc": "people-group/time-off-and-absence/time-off-types.md", "question": "How much notice should I give for 3 business days of planned time off?", "kind": "literal"}
+{"id": "n008", "doc": "people-group/time-off-and-absence/time-off-types.md", "question": "How far in the past can I edit time off entries myself?", "kind": "literal"}
+{"id": "n009", "doc": "people-group/time-off-and-absence/leave-types.md", "question": "Can I split my Parental Leave into segments, and how many?", "kind": "literal"}
+{"id": "n010", "doc": "people-group/time-off-and-absence/leave-types.md", "question": "Do Automated System Emails require action during Parental Leave?", "kind": "literal"}
+{"id": "n011", "doc": "total-rewards/benefits/parental-leave-toolkit.md", "question": "Besides setting an out of office message in Gmail, which tools should reflect my absence?", "kind": "literal"}
+{"id": "n012", "doc": "total-rewards/benefits/parental-leave-toolkit.md", "question": "Who should I align with on a ramp-up timeline when returning from leave?", "kind": "literal"}
+{"id": "n013", "doc": "people-group/pronouns.md", "question": "Is sharing pronouns always a personal choice?", "kind": "literal"}
+{"id": "n014", "doc": "people-group/pronouns.md", "question": "Can I assume someone's pronouns based on appearance, name, or voice?", "kind": "literal"}
+{"id": "n015", "doc": "people-group/relocation.md", "question": "Can I apply for a relocation with a retroactive date?", "kind": "literal"}
+{"id": "n016", "doc": "people-group/relocation.md", "question": "How many days must team members reside in their primary location within a calendar year?", "kind": "literal"}
+{"id": "n017", "doc": "people-group/visas.md", "question": "How many VISA attempts can GitLab cover the costs of?", "kind": "literal"}
+{"id": "n018", "doc": "people-group/visas.md", "question": "Can I expense relocation costs or costs related to visas for work authorization?", "kind": "literal"}
+{"id": "n019", "doc": "people-group/contracts-probation-periods.md", "question": "Who is the DRI for individual team member contracts after hiring?", "kind": "literal"}
+{"id": "n020", "doc": "people-group/contracts-probation-periods.md", "question": "When should managers specifically review performance during a direct report's probation period?", "kind": "literal"}
+{"id": "n021", "doc": "people-group/givelab-volunteer-initiatives.md", "question": "Which team does the GiveLab Program live under?", "kind": "literal"}
+{"id": "n022", "doc": "people-group/givelab-volunteer-initiatives.md", "question": "Can volunteer activities be virtual or part of team events and get togethers?", "kind": "literal"}
+{"id": "n023", "doc": "total-rewards/benefits/modern-health.md", "question": "How many complimentary coaching sessions per year does Modern Health provide?", "kind": "literal"}
+{"id": "n024", "doc": "total-rewards/benefits/modern-health.md", "question": "When do Modern Health benefits reset annually?", "kind": "literal"}
+{"id": "n025", "doc": "communication/chat.md", "question": "Should I expect real-time answers from others all the time on Slack?", "kind": "literal"}
+{"id": "n026", "doc": "communication/chat.md", "question": "What happens to External channels with no activity in the last year?", "kind": "literal"}
+{"id": "n027", "doc": "communication/ask-me-anything.md", "question": "Where should I add AMA questions if the Google document becomes overloaded?", "kind": "literal"}
+{"id": "n028", "doc": "communication/ask-me-anything.md", "question": "How many AMAs are generally best for the Americas/EMEA and APAC time zones?", "kind": "literal"}
+{"id": "n029", "doc": "communication/power-of-the-pause.md", "question": "Under Understand the Situation, what should I do with facts, opinions and assumptions?", "kind": "literal"}
+{"id": "n030", "doc": "communication/power-of-the-pause.md", "question": "Why can a physical step back help under Step Outside?", "kind": "literal"}
+{"id": "n031", "doc": "security/password-guidelines.md", "question": "May my password manager store the master password or username?", "kind": "literal"}
+{"id": "n032", "doc": "security/password-guidelines.md", "question": "Should admins know my Master Password?", "kind": "literal"}
+{"id": "n033", "doc": "security/security-and-technology-policy-exception.md", "question": "Does an extension of a policy exception require a new and approved extension request?", "kind": "literal"}
+{"id": "n034", "doc": "security/security-and-technology-policy-exception.md", "question": "Where should the business send an appeal of an exception approval decision?", "kind": "literal"}
+{"id": "n035", "doc": "security/controlled-document-procedure.md", "question": "How often must controlled documents be reviewed and approved?", "kind": "literal"}
+{"id": "n036", "doc": "security/controlled-document-procedure.md", "question": "Should Roles & Responsibilities in controlled documents refer to departments or specific individuals?", "kind": "literal"}
+{"id": "n037", "doc": "finance/travel/_index.md", "question": "Is team member travel required unless deemed essential to the role, and who can clarify this?", "kind": "literal"}
+{"id": "n038", "doc": "finance/travel/_index.md", "question": "Should I reuse my GitLab credentials when registering for the ISOS Assistance App?", "kind": "literal"}
+{"id": "n039", "doc": "total-rewards/benefits/general-and-entity-benefits/financial-wellness.md", "question": "Does SageView offer specific tax, legal, or financial advice, and are consultations confidential?", "kind": "literal"}
+{"id": "n040", "doc": "total-rewards/benefits/general-and-entity-benefits/financial-wellness.md", "question": "What is the main focus of the SageView Financial Wellness Program?", "kind": "literal"}
+{"id": "n041", "doc": "total-rewards/incentives.md", "question": "How long must the need for coverage be for an interim role to be considered?", "kind": "literal"}
+{"id": "n042", "doc": "total-rewards/incentives.md", "question": "Are self-nominations permitted for discretionary bonuses?", "kind": "literal"}
+{"id": "n043", "doc": "total-rewards/benefits/general-and-entity-benefits/singapore-pte-ltd.md", "question": "When should I contact IHP for a cashless arrangement with a panel specialist?", "kind": "literal"}
+{"id": "n044", "doc": "total-rewards/benefits/general-and-entity-benefits/singapore-pte-ltd.md", "question": "Can I add tests or upgrade my annual Executive Health Screening, and who pays?", "kind": "literal"}
+{"id": "n045", "doc": "total-rewards/benefits/general-and-entity-benefits/ltd-benefits-uk.md", "question": "Is enrollment in the UK AXA PPP medical insurance plan automatic?", "kind": "literal"}
+{"id": "n046", "doc": "total-rewards/benefits/general-and-entity-benefits/ltd-benefits-uk.md", "question": "What percentage of UK AXA PPP membership costs does GitLab cover for me and my family members?", "kind": "literal"}
+{"id": "n047", "doc": "total-rewards/benefits/general-and-entity-benefits/bv-benefits-netherlands.md", "question": "What gross monthly Medical Allowance do full-time Netherlands team members receive?", "kind": "literal"}
+{"id": "n048", "doc": "total-rewards/benefits/general-and-entity-benefits/bv-benefits-netherlands.md", "question": "Is the EUR 250 Vision Reimbursement cap combined for the eye test and computer glasses?", "kind": "literal"}
+{"id": "n049", "doc": "legal/materials-legal-review-process.md", "question": "What turnaround time does Legal & Corporate Affairs aim for on single material reviews?", "kind": "literal"}
+{"id": "n050", "doc": "legal/materials-legal-review-process.md", "question": "Will Legal & Corporate Affairs review materials sent in Slack?", "kind": "literal"}
+{"id": "n051", "doc": "legal/risk-management-dispute-resolution.md", "question": "Can a team member bind the company to pay money to settle a dispute without Legal and Corporate Affairs signoff?", "kind": "literal"}
+{"id": "n052", "doc": "legal/risk-management-dispute-resolution.md", "question": "Is #legal a private channel for my inquiry?", "kind": "literal"}
+{"id": "n053", "doc": "legal/trade-compliance.md", "question": "Which types of laws often make up trade control laws?", "kind": "literal"}
+{"id": "n054", "doc": "legal/trade-compliance.md", "question": "Besides physical shipment, which forms can exports, re-exports, and transfers take according to this handbook?", "kind": "literal"}
+{"id": "n055", "doc": "security/security-operations/sirt/engaging-security-on-call.md", "question": "What is the SLA for Slack mentions for low severity issues on business days?", "kind": "literal"}
+{"id": "n056", "doc": "security/security-operations/sirt/engaging-security-on-call.md", "question": "How quickly will the SEOC typically respond if paged?", "kind": "literal"}
+{"id": "n057", "doc": "security/secure-coding-training.md", "question": "How often must team members with development responsibilities complete secure code training?", "kind": "literal"}
+{"id": "n058", "doc": "security/secure-coding-training.md", "question": "May I use hints or give incorrect answers while completing the mandatory secure code course?", "kind": "literal"}
+{"id": "n059", "doc": "security/pgp_process.md", "question": "Should Include secret key in exported file be checked when sharing the Public Key?", "kind": "literal"}
+{"id": "n060", "doc": "security/pgp_process.md", "question": "Where will the decrypted file be placed after OpenPGP: Decrypt File?", "kind": "literal"}
+{"id": "n061", "doc": "communication/confidentiality-levels.md", "question": "Is Limited access a more severe restriction than internal, and can all team members see it?", "kind": "literal"}
+{"id": "n062", "doc": "communication/confidentiality-levels.md", "question": "If something isn't listed in the confidentiality levels, which Security standard should I consult?", "kind": "literal"}
+{"id": "n063", "doc": "communication/deep-dives.md", "question": "Why should I create a .pdf of a Deep Dive talk?", "kind": "literal"}
+{"id": "n064", "doc": "communication/deep-dives.md", "question": "What should I do with the font size in my text editor and terminal before a Deep Dive?", "kind": "literal"}
+{"id": "n065", "doc": "people-group/competencies.md", "question": "What do Values Competencies reflect?", "kind": "literal"}
+{"id": "n066", "doc": "people-group/competencies.md", "question": "What score earns a certificate in the Remote Work Competencies knowledge assessment?", "kind": "literal"}
+{"id": "n067", "doc": "people-group/general-onboarding/onboarding-buddies.md", "question": "新人入职时，应该由谁来安排带他熟悉公司的老同事？", "kind": "paraphrase"}
+{"id": "n068", "doc": "people-group/general-onboarding/onboarding-buddies.md", "question": "如果我要给刚来的人挑一位引路人，候选人在公司的资历最好达到多久？", "kind": "paraphrase"}
+{"id": "n069", "doc": "people-group/guidance-on-feedback.md", "question": "表扬同事做得好的地方和指出改进空间，两类意见建议按什么比例给？", "kind": "paraphrase"}
+{"id": "n070", "doc": "people-group/guidance-on-feedback.md", "question": "同事最近有个做法需要提醒，我该现在说还是攒到年度考评再说？", "kind": "paraphrase"}
+{"id": "n071", "doc": "people-group/360-feedback.md", "question": "我刚进公司，想收集周围同事对我的综合评价，通常待满多久才能参加？", "kind": "paraphrase"}
+{"id": "n072", "doc": "people-group/360-feedback.md", "question": "要做一次来自不同合作方的个人评价，我需要先提名几位平时一起做事的人？", "kind": "paraphrase"}
+{"id": "n073", "doc": "people-group/time-off-and-absence/time-off-types.md", "question": "我打算连休三个工作日，最少要提前多少个工作日跟主管打招呼？", "kind": "paraphrase"}
+{"id": "n074", "doc": "people-group/time-off-and-absence/time-off-types.md", "question": "之前登记的休息日期填错了，多久以内的历史记录我还能自己改？", "kind": "paraphrase"}
+{"id": "n075", "doc": "people-group/time-off-and-absence/leave-types.md", "question": "孩子出生后的那段带薪照护时间可以分开用吗，最多分几次？", "kind": "paraphrase"}
+{"id": "n076", "doc": "people-group/time-off-and-absence/leave-types.md", "question": "我正在家带新生儿，公司的机器通知邮件还在催我处理，必须打开照办吗？", "kind": "paraphrase"}
+{"id": "n077", "doc": "total-rewards/benefits/parental-leave-toolkit.md", "question": "长期不在岗前，除了邮箱自动回复，还要在哪些地方标明我不在线？", "kind": "paraphrase"}
+{"id": "n078", "doc": "total-rewards/benefits/parental-leave-toolkit.md", "question": "休了较长时间回来后，我要和谁商量逐步恢复工作量的节奏？", "kind": "paraphrase"}
+{"id": "n079", "doc": "people-group/pronouns.md", "question": "公司会强制大家公开自己希望被怎样称呼吗？", "kind": "paraphrase"}
+{"id": "n080", "doc": "people-group/pronouns.md", "question": "只听声音或看名字就替同事决定用他还是她称呼，合适吗？", "kind": "paraphrase"}
+{"id": "n081", "doc": "people-group/relocation.md", "question": "我搬家后才补报，能把变更生效日期填成已经过去的那一天吗？", "kind": "paraphrase"}
+{"id": "n082", "doc": "people-group/relocation.md", "question": "按这份公司规定，一年中至少要有多少天实际住在登记的主要居住地？这些天必须连续吗？", "kind": "paraphrase"}
+{"id": "n083", "doc": "people-group/visas.md", "question": "为公司批准的活动办入境手续，如果第一次被拒后再申请，公司还能承担第二次费用吗？", "kind": "paraphrase"}
+{"id": "n084", "doc": "people-group/visas.md", "question": "为自己换居住地以及取得当地工作许可花的钱，可以向公司报销吗？", "kind": "paraphrase"}
+{"id": "n085", "doc": "people-group/contracts-probation-periods.md", "question": "我已经入职了，自己的劳动协议有疑问，应该找哪支团队负责？", "kind": "paraphrase"}
+{"id": "n086", "doc": "people-group/contracts-probation-periods.md", "question": "新人还在试用阶段，主管应在这个阶段的哪个时间点专门检查他的工作表现？", "kind": "paraphrase"}
+{"id": "n087", "doc": "people-group/givelab-volunteer-initiatives.md", "question": "公司鼓励员工做公益的那项计划，归哪个可持续发展相关团队管理？", "kind": "paraphrase"}
+{"id": "n088", "doc": "people-group/givelab-volunteer-initiatives.md", "question": "大家不在同一个城市，也能线上做公益，或者把公益安排进团队聚会吗？", "kind": "paraphrase"}
+{"id": "n089", "doc": "total-rewards/benefits/modern-health.md", "question": "公司提供的心理与成长支持福利，每年免费的一对一成长辅导有几次？", "kind": "paraphrase"}
+{"id": "n090", "doc": "total-rewards/benefits/modern-health.md", "question": "心理健康服务的年度额度在每年的哪一天重新开始计算？", "kind": "paraphrase"}
+{"id": "n091", "doc": "communication/chat.md", "question": "在公司聊天里给同事留言后，是否应该要求对方随时马上回复？", "kind": "paraphrase"}
+{"id": "n092", "doc": "communication/chat.md", "question": "和外部伙伴共用的聊天空间如果整整一年没人用，会怎么处理？", "kind": "paraphrase"}
+{"id": "n093", "doc": "communication/ask-me-anything.md", "question": "全员问答会的共享议程挤不进去时，我还能把想问的内容发到哪里？", "kind": "paraphrase"}
+{"id": "n094", "doc": "communication/ask-me-anything.md", "question": "公司各地同事作息不同，面向全球的开放问答通常建议安排几场，分别照顾哪些地区？", "kind": "paraphrase"}
+{"id": "n095", "doc": "communication/power-of-the-pause.md", "question": "看到一件事很生气、想马上插话之前，应该先怎样分清实际情况和个人猜测？", "kind": "paraphrase"}
+{"id": "n096", "doc": "communication/power-of-the-pause.md", "question": "争执时先离开现场缓一缓，按这篇沟通指南有什么帮助？", "kind": "paraphrase"}
+{"id": "n097", "doc": "security/password-guidelines.md", "question": "管理所有登录信息的工具里，可以再保存它自己的总解锁口令吗？用户名又能不能存？", "kind": "paraphrase"}
+{"id": "n098", "doc": "security/password-guidelines.md", "question": "信息技术管理员说要帮我处理账号问题，他可以知道我的密码库总口令吗？", "kind": "paraphrase"}
+{"id": "n099", "doc": "security/security-and-technology-policy-exception.md", "question": "之前获准临时不按标准做的安排快到期了，想继续沿用可以自动续吗？", "kind": "paraphrase"}
+{"id": "n100", "doc": "security/security-and-technology-policy-exception.md", "question": "团队对安全政策特殊申请的审批结果有异议，要先交给哪个职能部门复议？", "kind": "paraphrase"}
+{"id": "n101", "doc": "security/controlled-document-procedure.md", "question": "为了合规而严格管理变更的制度文件，最少多久需要重新检查并确认一次？", "kind": "paraphrase"}
+{"id": "n102", "doc": "security/controlled-document-procedure.md", "question": "编写正式制度时，分工部分应该写某个人的姓名，还是写对应岗位和部门？", "kind": "paraphrase"}
+{"id": "n103", "doc": "finance/travel/_index.md", "question": "工作中有一次出差我不确定非去不可，什么情况下才算必须参加，应找谁确认？", "kind": "paraphrase"}
+{"id": "n104", "doc": "finance/travel/_index.md", "question": "注册公司出差救援服务时，能直接沿用办公账号的口令吗？", "kind": "paraphrase"}
+{"id": "n105", "doc": "total-rewards/benefits/general-and-entity-benefits/financial-wellness.md", "question": "员工理财教育福利能替我作具体税务或投资决定吗？咨询内容会公开吗？", "kind": "paraphrase"}
+{"id": "n106", "doc": "total-rewards/benefits/general-and-entity-benefits/financial-wellness.md", "question": "公司提供财务福祉专家咨询和教育讲座的那项员工服务，重点帮大家弄懂哪部分报酬安排？", "kind": "paraphrase"}
+{"id": "n107", "doc": "total-rewards/incentives.md", "question": "临时替人承担管理职责，覆盖时长要超过多少天，才满足这项奖励的基本时间条件？", "kind": "paraphrase"}
+{"id": "n108", "doc": "total-rewards/incentives.md", "question": "我觉得自己这次额外贡献很突出，可以给自己申请同事认可奖金吗？", "kind": "paraphrase"}
+{"id": "n109", "doc": "total-rewards/benefits/general-and-entity-benefits/singapore-pte-ltd.md", "question": "新加坡员工要去保险网络内的专科门诊，想免垫付费用，应该在就诊前还是之后联系服务方？", "kind": "paraphrase"}
+{"id": "n110", "doc": "total-rewards/benefits/general-and-entity-benefits/singapore-pte-ltd.md", "question": "新加坡的年度体检想额外加检查项目，可以加吗，多出来的钱谁承担？", "kind": "paraphrase"}
+{"id": "n111", "doc": "total-rewards/benefits/general-and-entity-benefits/ltd-benefits-uk.md", "question": "英国同事入职后，私人医疗保障会自动开通，还是要自己先申请加入？", "kind": "paraphrase"}
+{"id": "n112", "doc": "total-rewards/benefits/general-and-entity-benefits/ltd-benefits-uk.md", "question": "英国医疗福利里，员工本人和加进来的家属，公司各承担多少比例的保费？", "kind": "paraphrase"}
+{"id": "n113", "doc": "total-rewards/benefits/general-and-entity-benefits/bv-benefits-netherlands.md", "question": "在荷兰全职工作的同事，每月公司补贴多少欧元用于医疗开支，这是税前还是税后金额？", "kind": "paraphrase"}
+{"id": "n114", "doc": "total-rewards/benefits/general-and-entity-benefits/bv-benefits-netherlands.md", "question": "荷兰员工因看屏幕需要验光和配工作眼镜，两项费用分别有额度，还是共用同一个上限？", "kind": "paraphrase"}
+{"id": "n115", "doc": "legal/materials-legal-review-process.md", "question": "只送审一份宣传材料，在资料齐全的前提下，法务通常争取几个工作日处理完？", "kind": "paraphrase"}
+{"id": "n116", "doc": "legal/materials-legal-review-process.md", "question": "我把待审稿直接扔到公司聊天里，法务就会按这个方式审批吗？", "kind": "paraphrase"}
+{"id": "n117", "doc": "legal/risk-management-dispute-resolution.md", "question": "客户要求付一笔钱了结争议，我可以自己答应让公司付款吗？", "kind": "paraphrase"}
+{"id": "n118", "doc": "legal/risk-management-dispute-resolution.md", "question": "公司的法务公共聊天区发消息，是否只有律师能看到？", "kind": "paraphrase"}
+{"id": "n119", "doc": "legal/trade-compliance.md", "question": "手册说的跨境交易限制，通常包括哪三类制度？", "kind": "paraphrase"}
+{"id": "n120", "doc": "legal/trade-compliance.md", "question": "按这篇手册，只有实物寄出才算跨境技术提供吗，口头讲解或电子传输也算在内吗？", "kind": "paraphrase"}
+{"id": "n121", "doc": "security/security-operations/sirt/engaging-security-on-call.md", "question": "非紧急安全问题在工作日通过聊天点名求助，响应承诺是几个小时？", "kind": "paraphrase"}
+{"id": "n122", "doc": "security/security-operations/sirt/engaging-security-on-call.md", "question": "触发紧急呼叫后，值班安全工程师一般多久会回应？", "kind": "paraphrase"}
+{"id": "n123", "doc": "security/secure-coding-training.md", "question": "负责写程序的同事，最低多久要完成一次公司指定的防漏洞课程？", "kind": "paraphrase"}
+{"id": "n124", "doc": "security/secure-coding-training.md", "question": "必修的程序安全练习是不是必须全对，还禁止看提示？", "kind": "paraphrase"}
+{"id": "n125", "doc": "security/pgp_process.md", "question": "把加密通信的公开钥匙导出给别人时，导出窗口里的附带私密钥匙选项该不该勾？", "kind": "paraphrase"}
+{"id": "n126", "doc": "security/pgp_process.md", "question": "在文件管理器里把加密附件还原后，结果会放在哪，名字会完全一样吗？", "kind": "paraphrase"}
+{"id": "n127", "doc": "communication/confidentiality-levels.md", "question": "公司里标为仅限特定人看的内容，所有员工都能查吗，它和普通内部资料哪个限制更严？", "kind": "paraphrase"}
+{"id": "n128", "doc": "communication/confidentiality-levels.md", "question": "这页没有列出我手上材料的类别时，应查安全团队的哪份规则来判断能否分享？", "kind": "paraphrase"}
+{"id": "n129", "doc": "communication/deep-dives.md", "question": "内部技术分享结束后，为什么还建议把讲稿导出成可直接打开的电子文件？", "kind": "paraphrase"}
+{"id": "n130", "doc": "communication/deep-dives.md", "question": "技术演示要录下来给别人看，代码编辑窗口和命令窗口的文字显示有什么准备建议？", "kind": "paraphrase"}
+{"id": "n131", "doc": "people-group/competencies.md", "question": "公司用来评价价值观是否落实的那类能力，主要描述什么样的行为和本领？", "kind": "paraphrase"}
+{"id": "n132", "doc": "people-group/competencies.md", "question": "远程办公能力的自测要拿到多少分比例，才会发证书？", "kind": "paraphrase"}
+{"id": "n133", "doc": "communication/deep-dives.md", "question": "准备深入讲一个技术主题前，需要假定听众完全零基础吗，还是他们已经稍有了解？", "kind": "paraphrase"}
+{"id": "n134", "doc": "acquisitions/_index.md", "question": "按公开收购指南，研发团队规模一般希望控制在多少人以内？", "kind": "trap"}
+{"id": "n135", "doc": "acquisitions/_index.md", "question": "想主动讨论被收购的可能性，公开流程要求联系哪个部门？", "kind": "trap"}
+{"id": "n136", "doc": "acquisitions/_index.md", "question": "收购说明里，交易推进顺利时希望多久完成交割？", "kind": "trap"}
+{"id": "n137", "doc": "acquisitions/_index.md", "question": "收购团队原来的产品打算怎样处理，为什么不长期单独维护？", "kind": "trap"}
+{"id": "n138", "doc": "acquisitions/_index.md", "question": "收购之前，目标团队准备适应公司文化时，指南建议先了解哪两件事？", "kind": "trap"}
+{"id": "n139", "doc": "acquisitions/acquisition-process/_index.md", "question": "公开的收购流程一共分哪五个阶段？", "kind": "trap"}
+{"id": "n140", "doc": "acquisitions/acquisition-process/_index.md", "question": "收购评估的产品交流会之前，双方需要先签什么？", "kind": "trap"}
+{"id": "n141", "doc": "acquisitions/acquisition-process/_index.md", "question": "收购项目里想把同事拉进讨论群，按公开规定要先和谁确认？", "kind": "trap"}
+{"id": "n142", "doc": "acquisitions/acquisition-process/_index.md", "question": "收购谈判停止以后，公开流程由谁归档相关Slack频道？", "kind": "trap"}
+{"id": "n143", "doc": "acquisitions/acquisition-process/_index.md", "question": "收购进入早期尽调后，项目代号按什么主题选取？", "kind": "trap"}
+{"id": "n144", "doc": "acquisitions/acquisition-process/acquisition-process-communications.md", "question": "被问到收购泄露或传闻时，公开指南规定由哪个团队统一应对？", "kind": "trap"}
+{"id": "n145", "doc": "acquisitions/acquisition-process/acquisition-process-communications.md", "question": "如果决定回应收购泄露消息，哪些职能要参与合规把关？", "kind": "trap"}
+{"id": "n146", "doc": "acquisitions/acquisition-process/acquisition-process-communications.md", "question": "收购公告当天，流程要求先向哪个交易市场通知即将发布的新闻稿？", "kind": "trap"}
+{"id": "n147", "doc": "acquisitions/acquisition-process/acquisition-process-communications.md", "question": "按收购传播模板，被收购公司对公告博客有最终批准权吗？", "kind": "trap"}
+{"id": "n148", "doc": "acquisitions/acquisition-process/acquisition-process-communications.md", "question": "收购宣布后，亚太时区的同事可以参加专门安排的哪种交流？", "kind": "trap"}
+{"id": "n149", "doc": "acquisitions/acquisition-process/integration.md", "question": "收购整合中的新人Fastboot应该在入职后多久安排？", "kind": "trap"}
+{"id": "n150", "doc": "acquisitions/acquisition-process/integration.md", "question": "收购整合调查按公开流程会在交割后大约哪两个时间点进行？", "kind": "trap"}
+{"id": "n151", "doc": "acquisitions/acquisition-process/integration.md", "question": "收购公告的产品速览视频，公开指南建议最长多久？", "kind": "trap"}
+{"id": "n152", "doc": "acquisitions/acquisition-process/integration.md", "question": "按收购整合的资料管理流程，交割文件夹最终上传到什么系统？", "kind": "trap"}
+{"id": "n153", "doc": "acquisitions/acquisition-process/integration.md", "question": "收购整合里修改里程碑的措辞，一般要哪些负责人批准？", "kind": "trap"}
+{"id": "n154", "doc": "people-group/offboarding/faq.md", "question": "离职当天账户权限一般几点停用，按哪个时区算？", "kind": "trap"}
+{"id": "n155", "doc": "people-group/offboarding/faq.md", "question": "离职前，个人My Drive里的工作文档应该迁到哪里？", "kind": "trap"}
+{"id": "n156", "doc": "people-group/offboarding/faq.md", "question": "离职前可以自己清空公司笔记本吗？", "kind": "trap"}
+{"id": "n157", "doc": "people-group/offboarding/faq.md", "question": "离职的最终报销单，指南希望至少提前多久提交？", "kind": "trap"}
+{"id": "n158", "doc": "people-group/offboarding/faq.md", "question": "已经离职的美国同事还能查看多久的ADP工资单记录？", "kind": "trap"}
+{"id": "n159", "doc": "people-group/offboarding/offboarding_standards.md", "question": "离职标准对笔记本归还周期给出的大致范围是多少？", "kind": "trap"}
+{"id": "n160", "doc": "people-group/offboarding/offboarding_standards.md", "question": "员工离职后临时转为顾问，能直接保留原来全部权限吗？", "kind": "trap"}
+{"id": "n161", "doc": "people-group/offboarding/offboarding_standards.md", "question": "离职账号上的邮件自动回复会保留多久再归档？", "kind": "trap"}
+{"id": "n162", "doc": "people-group/offboarding/offboarding_standards.md", "question": "离职标准有例外情况时，哪个团队负责批准？", "kind": "trap"}
+{"id": "n163", "doc": "people-group/offboarding/offboarding_standards.md", "question": "离职权限清理任务即使不适用也要打勾吗，勾选分别表示什么？", "kind": "trap"}
+{"id": "n164", "doc": "people-group/offboarding/_index.md", "question": "主动离职前，员工应先和直属主管讨论哪两方面？", "kind": "trap"}
+{"id": "n165", "doc": "people-group/offboarding/_index.md", "question": "离职日期发生变化，按流程应通过什么渠道通知哪个团队？", "kind": "trap"}
+{"id": "n166", "doc": "people-group/offboarding/_index.md", "question": "离职消息最迟应在离开后多久通知关键协作方？", "kind": "trap"}
+{"id": "n167", "doc": "people-group/offboarding/_index.md", "question": "主动离职与非自愿离职，加入校友Slack频道的资格有什么不同？", "kind": "trap"}
+{"id": "n168", "doc": "people-group/offboarding/_index.md", "question": "离职公告由员工还是主管发，发布前有什么共同要求？", "kind": "trap"}
+{"id": "n169", "doc": "security/gitleaks.md", "question": "防止凭证泄露的扫描为什么需要覆盖所有仓库，而不只是当前项目？", "kind": "trap"}
+{"id": "n170", "doc": "security/gitleaks.md", "question": "gitleaks报告疑似泄露后，怎样从输出里确认是哪类内容和哪一行？", "kind": "trap"}
+{"id": "n171", "doc": "security/gitleaks.md", "question": "提交代码时发现真的把凭证写进去了，泄露防护指南要求先怎么处理？", "kind": "trap"}
+{"id": "n172", "doc": "security/gitleaks.md", "question": "确认防泄露扫描误报后，可以把跳过扫描的环境变量永久开启吗？", "kind": "trap"}
+{"id": "n173", "doc": "security/gitleaks.md", "question": "防泄露工具对示例凭证的行内豁免标记叫什么，从哪个版本提供？", "kind": "trap"}
+{"id": "n174", "doc": "security/password-guidelines.md", "question": "离职后，企业1Password账号及Employee保险库会怎样？", "kind": "trap"}
+{"id": "n175", "doc": "security/password-guidelines.md", "question": "想在离职后继续使用自己的私人密码，指南建议使用哪种免费家庭订阅？", "kind": "trap"}
+{"id": "n176", "doc": "security/password-guidelines.md", "question": "企业提供的1Password家庭功能最多能分享给多少位家人？", "kind": "trap"}
+{"id": "n177", "doc": "security/password-guidelines.md", "question": "公司Employee保险库里的私人内容，管理员是否能直接查看？", "kind": "trap"}
+{"id": "n178", "doc": "security/password-guidelines.md", "question": "主密码不小心泄露给别人后，密码指南要求立刻做什么？", "kind": "trap"}
+{"id": "n179", "doc": "security/engaging-with-security.md", "question": "公开安全流程里，个人数据泄露类事项是否也会照常披露？", "kind": "trap"}
+{"id": "n180", "doc": "security/engaging-with-security.md", "question": "确实需要披露个人数据泄露事项时，应该先咨询哪两个团队？", "kind": "trap"}
+{"id": "n181", "doc": "security/engaging-with-security.md", "question": "公开渠道报来的漏洞一旦核实，原公开工单该怎么处理？", "kind": "trap"}
+{"id": "n182", "doc": "security/engaging-with-security.md", "question": "准备公开安全工单前，描述和评论里的令牌、访问密钥要怎么处理？", "kind": "trap"}
+{"id": "n183", "doc": "security/engaging-with-security.md", "question": "按公开披露流程，安全漏洞的保密工单通常在补丁后多少天公开？", "kind": "trap"}
+{"id": "n184", "doc": "legal/record-retention-policy.md", "question": "收购或合并带来的历史文件，也适用公司的记录留存政策吗？", "kind": "trap"}
+{"id": "n185", "doc": "legal/record-retention-policy.md", "question": "办公室关闭后移交档案，除了转给新负责人，还要向法务说明什么？", "kind": "trap"}
+{"id": "n186", "doc": "legal/record-retention-policy.md", "question": "员工离职或职责移交时，仍在业务中使用的档案应该怎么交接？", "kind": "trap"}
+{"id": "n187", "doc": "legal/record-retention-policy.md", "question": "收到诉讼保全要求后，能不能照原来的留存表删除到期文件？", "kind": "trap"}
+{"id": "n188", "doc": "legal/record-retention-policy.md", "question": "收购资料若同时受合同和公司留存期限约束，两者冲突应采用哪个期限？", "kind": "trap"}
+{"id": "n189", "doc": "legal/privacy/employee-privacy-policy.md", "question": "员工隐私政策说，潜在合并或收购方可能接收哪几类员工资料？", "kind": "trap"}
+{"id": "n190", "doc": "legal/privacy/employee-privacy-policy.md", "question": "离职后如果要申请自己的个人档案，隐私政策给出的联系邮箱是什么？", "kind": "trap"}
+{"id": "n191", "doc": "legal/privacy/employee-privacy-policy.md", "question": "如果想查阅超出人事档案范围的个人数据，该提交哪一种申请？", "kind": "trap"}
+{"id": "n192", "doc": "legal/privacy/employee-privacy-policy.md", "question": "申请删除自己的个人数据时，隐私政策要求走哪个表单？", "kind": "trap"}
+{"id": "n193", "doc": "legal/privacy/employee-privacy-policy.md", "question": "撤回个人数据处理同意，会让撤回之前已经进行的处理变成违法的吗？", "kind": "trap"}
+{"id": "n194", "doc": "total-rewards/benefits/general-and-entity-benefits/inc-benefits-us/_index.md", "question": "美国员工离职后，HSA里剩余的钱还属于自己吗？", "kind": "trap"}
+{"id": "n195", "doc": "total-rewards/benefits/general-and-entity-benefits/inc-benefits-us/_index.md", "question": "离职后Dependent Care FSA能通过COBRA继续缴费吗？", "kind": "trap"}
+{"id": "n196", "doc": "total-rewards/benefits/general-and-entity-benefits/inc-benefits-us/_index.md", "question": "离职员工提交FSA报销申请，截止期是多少天？", "kind": "trap"}
+{"id": "n197", "doc": "total-rewards/benefits/general-and-entity-benefits/inc-benefits-us/_index.md", "question": "离职后收到COBRA资料包，通常有多长时间决定加入？", "kind": "trap"}
+{"id": "n198", "doc": "total-rewards/benefits/general-and-entity-benefits/inc-benefits-us/_index.md", "question": "离职后已经加入COBRA，需要在加入后多少天内补齐费用？", "kind": "trap"}
+{"id": "n199", "doc": "legal/employment-law.md", "question": "HR要咨询敏感的离职过渡事项，Employment法务团队的联系邮箱是什么？", "kind": "trap"}
+{"id": "n200", "doc": "legal/employment-law.md", "question": "员工想询问自己的劳动关系问题，公开法务指南要求走哪个支持渠道？", "kind": "trap"}

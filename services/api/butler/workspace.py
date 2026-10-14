@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import time
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal, Optional
@@ -14,14 +15,20 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from .acl.policy import can_read
 from .answer.mosaic import KeywordJudge
-from .answer.pipeline import answer_question
+from .answer.pipeline import answer_question, question_hash
 from .answer.remote import ModelFailure, RemoteJudge, RemoteModel
 from .answer.session import Session
 from .audit.chain import GENESIS, _h, verify
+from .audit.checkpoint import sign_checkpoint
+from .audit.persistent import PersistentAudit
+from .knowledge import KnowledgeError, delete_document, refresh_auto_premises, text_hash as _text_hash, upsert_documents
 from .connectors.fake import load_world
 from .database import Database
 from .models import Doc, Fact, Identity
 from . import passwords
+from .ingest.embedding import EmbeddingFailure, HashingEmbedder, RemoteEmbedder
+from .ingest.index import index_documents
+from .retrieval.hybrid import IndexCache, build_store
 from .retrieval.store import Store
 
 ADMIN_ROLES = {"admin", "security"}
@@ -53,6 +60,7 @@ class Settings(StrictBody):
     generation_model: str = Field(default="", max_length=100)
     judge_model: str = Field(default="", max_length=100)
     max_tokens: int = Field(default=1200, ge=256, le=4096)
+    embedding_model: str = Field(default="", max_length=100)  # 空 = 离线哈希嵌入；填写则用远程嵌入服务
 
 
 class MemberBody(StrictBody):
@@ -73,6 +81,7 @@ class FactBody(StrictBody):
     id: str = Field(min_length=1, max_length=128, pattern=r"^[\w.-]+$")
     source_doc: str = Field(min_length=1, max_length=128)
     statement: str = Field(min_length=1, max_length=2000)
+    premises: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ImportBody(StrictBody):
@@ -83,6 +92,7 @@ class ImportBody(StrictBody):
 class AskBody(StrictBody):
     question: str = Field(min_length=1, max_length=4000)
     session_id: str = Field(min_length=1, max_length=128, pattern=r"^[\w:-]+$")
+    request_id: str = Field(default_factory=lambda: uuid.uuid4().hex, min_length=1, max_length=64, pattern=r"^[\w-]+$")
 
 
 class ProvisionBody(StrictBody):
@@ -100,8 +110,52 @@ def documents(tx):
     return [Doc(d["id"], d["source"], d["title"], d["text"], frozenset(d["acl"])) for d in tx.all("document")]
 
 
+INDEX_CACHE = IndexCache()
+
+
+def embedder_for(settings):
+    """远程嵌入需要服务端密钥和配置的模型名；否则用离线哈希嵌入（不外发任何正文）。"""
+    key, model = os.getenv("HUNYUAN_API_KEY"), (settings or {}).get("embedding_model", "")
+    base = os.getenv("HUNYUAN_BASE_URL", "https://api.hunyuan.cloud.tencent.com/v1")
+    if MODE == "enterprise" and key and model and base.startswith("https://"):
+        return RemoteEmbedder(base, key, model)
+    return HashingEmbedder()
+
+
+def visible_docs(tx, who):
+    """可见文档的元数据（不含正文）：状态页、审计范围、来源列表都不需要把全部正文读出来。"""
+    from sqlalchemy import select
+    from . import database as D
+    now = time.time()
+    docs = [(r.fresh_until, Doc(r.id, r.source, r.title, "", frozenset(r.acl or []))) for r in tx.connection.execute(
+        select(D.documents.c.id, D.documents.c.source, D.documents.c.title, D.documents.c.acl, D.documents.c.fresh_until))]
+    return [d for fresh, d in docs if (fresh is None or fresh >= now) and can_read(who, d)]
+
+
+def reindex(ids=None):
+    """导入/同步之后的索引步骤，放在导入事务之外。向量化失败不影响导入：文档仍可被词法检索到。"""
+    with database.transaction() as tx:
+        embedder = embedder_for(tx.get("settings", "main"))
+    try:
+        stats = index_documents(database, embedder, ids)
+        with database.transaction() as tx:
+            refresh_auto_premises(tx)   # 资料变了，受限事实的前提重新发现
+        return stats
+    except EmbeddingFailure:
+        with database.transaction() as tx:
+            PersistentAudit(tx).append({"event": "index.failed", "reason": "embedding_unavailable"})
+        return None
+
+
+def text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
 def facts(tx):
-    return [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f.get("keywords", []))) for f in tx.all("fact")]
+    # 事实绑定来源正文的版本：正文变了而事实没重新登记，旧事实不再参与检查也不再有效
+    current = {d["id"]: d.get("content_hash") or text_hash(d["text"]) for d in tx.all("document")}
+    return [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f.get("keywords", [])), tuple(f.get("premises") or f.get("auto_premises", [])), 0 if f.get("premises") else f.get("auto_quorum", 0)) for f in tx.all("fact")
+            if f["source_doc"] in current and f.get("content_hash", current[f["source_doc"]]) == current[f["source_doc"]]]
 
 
 def bootstrap(db):
@@ -133,6 +187,7 @@ def bootstrap(db):
 
 
 bootstrap(database)
+reindex()
 passwords.bootstrap(database)
 
 
@@ -175,24 +230,14 @@ def revision(tx, who):
 
 
 def cite(docs):
-    return [{"id": d.id, "source": d.source, "title": d.title} for d in docs]
-
-
-class PersistentAudit:
-    def __init__(self, tx):
-        self.tx = tx
-        self.head = tx.get("meta", "audit_head")
-
-    def append(self, payload):
-        payload = {**payload, "ts": payload.get("ts", time.time())}
-        entry = {"prev_hash": self.head["hash"], "payload": payload, "hash": _h(self.head["hash"], payload)}
-        self.tx.put("audit_entry", f"{self.head['count']:020d}", entry)
-        self.head = {"hash": entry["hash"], "count": self.head["count"] + 1}
-        self.tx.put("meta", "audit_head", self.head)
-        return entry
-
-    def checkpoint(self):
-        return self.head["hash"]
+    out = []
+    for d in docs:
+        item = {"id": d.id, "source": d.source, "title": d.title}
+        if d.spans:  # 引用落到原文位置：前端据此高亮/跳转
+            item["spans"] = [list(x) for x in d.spans]
+            item["heading"] = d.heading
+        out.append(item)
+    return out
 
 
 @router.post("/provision")
@@ -228,11 +273,10 @@ def status(who=Depends(current)):
     with database.transaction() as tx:
         who = checked(tx, who)
         settings = tx.get("settings", "main")
-        docs = documents(tx)
         configured = bool(os.getenv("HUNYUAN_API_KEY") and settings["generation_model"] and settings["judge_model"])
         return {"organization": settings["organization"], "mode": MODE, "auth_mode": passwords.auth_mode(), "database": database.engine.dialect.name,
                 "model_ready": MODE == "demo" or configured,
-                "visible_documents": len([d for d in docs if can_read(who, d)]),
+                "visible_documents": len(visible_docs(tx, who)),
                 "conversations": len([c for c in tx.all("conversation") if c["owner"] == who.id]),
                 "audit_entries": tx.get("meta", "audit_head")["count"] if who.role in AUDIT_ROLES else None,
                 "can_admin": who.role in ADMIN_ROLES, "can_audit": who.role in AUDIT_ROLES}
@@ -412,7 +456,7 @@ def member_put(key: str, body: MemberBody, who=Depends(admin)):
 def sources(who=Depends(current)):
     with database.transaction() as tx:
         who = checked(tx, who)
-        visible = Store(documents(tx)).visible(who)
+        visible = visible_docs(tx, who)
         return {"visible": len(visible), "docs": cite(visible)}
 
 
@@ -428,27 +472,87 @@ def knowledge(who=Depends(admin)):
 def knowledge_import(body: ImportBody, who=Depends(admin)):
     with database.transaction() as tx:
         who = checked(tx, who, ADMIN_ROLES)
-        docs = {d["id"]: d for d in tx.all("document")}
         if len({d.id for d in body.documents}) != len(body.documents) or len({f.id for f in body.facts}) != len(body.facts):
             raise HTTPException(422, "同一次导入不能包含重复编号。")
-        for doc in body.documents:
-            data = doc.model_dump()
-            data["acl"] = sorted({g.strip() for g in doc.acl if g.strip()})
-            if not data["acl"]:
-                raise HTTPException(422, "资料必须设置可读权限组。")
-            docs[doc.id] = data
-            tx.put("document", doc.id, data)
-        for fact in body.facts:
-            if fact.source_doc not in docs:
-                raise HTTPException(422, "受限事实必须关联已有资料。")
-            tx.put("fact", fact.id, {**fact.model_dump(), "acl": docs[fact.source_doc]["acl"], "keywords": []})
-        # Updating a source ACL must also update all inherited fact ACLs.
-        for fact in tx.all("fact"):
-            tx.put("fact", fact["id"], {**fact, "acl": docs[fact["source_doc"]]["acl"]})
-        rev = tx.get("meta", "revision")["value"] + 1
-        tx.put("meta", "revision", {"value": rev})
+        try:
+            result = upsert_documents(tx, [d.model_dump() for d in body.documents], [f.model_dump() for f in body.facts])
+        except KnowledgeError as error:
+            raise HTTPException(422, str(error))
         PersistentAudit(tx).append({"event": "knowledge.imported", "user": who.id, "count": len(body.documents)})
-    return {"ok": True, "documents": len(body.documents), "facts": len(body.facts), "revision": rev}
+    stats = reindex([d.id for d in body.documents])
+    return {"ok": True, "documents": len(body.documents), "facts": len(body.facts), "revision": result["revision"],
+            "index": "pending" if stats is None else {"chunks": stats.chunks, "embedded": stats.embedded}}
+
+
+class RuleBody(StrictBody):
+    prefix: str = Field(default="", max_length=200)
+    principals: list[str] = Field(max_length=50)
+
+
+class ConnectorBody(StrictBody):
+    type: Literal["git"] = "git"
+    name: str = Field(pattern=r"^[a-z][a-z0-9-]{0,30}$")
+    location: str = Field(min_length=1, max_length=500)
+    branch: str = Field(default="main", pattern=r"^[\w./-]{1,100}$")
+    rules: list[RuleBody] = Field(max_length=200)
+
+
+class SyncConfigBody(StrictBody):
+    connector: ConnectorBody
+    principal_map: dict[str, list[str]] = Field(default_factory=dict, max_length=500)
+    acl_ttl_seconds: int = Field(default=3600, ge=60, le=86400)
+
+
+@router.put("/sync/config")
+def sync_config_put(body: SyncConfigBody, who=Depends(admin)):
+    from .workers.factory import build_connector
+    cfg = body.model_dump()
+    try:
+        build_connector(cfg["connector"])   # 地址/分支校验；https 以外只有显式放开本地路径时才允许
+    except Exception:
+        raise HTTPException(422, "连接器地址或分支不合法。")
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+        tx.put("sync_config", "main", cfg)
+        PersistentAudit(tx).append({"event": "sync.configured", "user": who.id, "connector": body.connector.name})
+    return {"ok": True}
+
+
+@router.get("/sync/status")
+def sync_status(who=Depends(admin)):
+    from .workers import queue
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+        cfg = tx.get("sync_config", "main")
+        synced = [d for d in tx.all("document") if d.get("sync")]
+        fresh = [d["sync"]["acl_fresh_until"] for d in synced]
+        return {"configured": cfg is not None, "connector": cfg["connector"]["name"] if cfg else None,
+                "data_source": "real" if cfg else None, "documents": len(synced),
+                "acl_oldest_fresh_until": min(fresh) if fresh else None,
+                "queue": queue.stats(tx), "ts": time.time()}
+
+
+@router.post("/sync/run")
+def sync_run(who=Depends(admin)):
+    """手动触发一轮：拉取 → 对账 → 处理队列。生产里由 worker 进程定期做同样的事。"""
+    from .workers.run import tick
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+    out = tick(database, embedder_for, 0)
+    with database.transaction() as tx:
+        PersistentAudit(tx).append({"event": "sync.run", "user": who.id})
+    return out
+
+
+@router.post("/knowledge/reindex")
+def knowledge_reindex(who=Depends(admin)):
+    """换嵌入模型后重建向量；已有 (模型, 内容哈希) 的向量会复用。"""
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+    stats = reindex()
+    with database.transaction() as tx:
+        PersistentAudit(tx).append({"event": "knowledge.reindexed", "user": who.id})
+    return {"ok": stats is not None, "chunks": stats.chunks if stats else 0}
 
 
 @router.get("/conversations")
@@ -457,7 +561,7 @@ def conversations(who=Depends(current)):
         who = checked(tx, who)
         return [{"id": c["id"], "title": c["title"], "updated": c["updated"],
                  "stale": c["revision"] != revision(tx, who)}
-                for c in sorted(tx.all("conversation"), key=lambda c: -c["updated"]) if c["owner"] == who.id]
+                for c in tx.query("conversation", order_by="updated", descending=True, limit=200, owner=who.id)]
 
 
 @router.get("/conversations/{key}")
@@ -476,19 +580,40 @@ def conversation_get(key: str, who=Depends(current)):
 
 @router.post("/ask")
 def ask(body: AskBody, who=Depends(current)):
+    result = _ask(body, who)
+    if "__failure__" in result:
+        raise HTTPException(503, result["__failure__"])
+    return result
+
+
+class BufferAudit:
+    """模型调用期间不持有数据库锁：审计先缓存，提交时在事务里按序写入哈希链。"""
+
+    def __init__(self):
+        self.payloads: list[dict] = []
+
+    def append(self, payload):
+        self.payloads.append(payload)
+
+
+def _ask(body: AskBody, who):
+    # 1) 短事务：校验身份、取会话/资料/事实快照
     with database.transaction() as tx:
         row = tx.get("member", who.id)
         if not row or not row["active"]:
             raise HTTPException(401, "账号已停用。")
-        who = identity(row)  # Re-read under the same lock as the answer.
+        who = identity(row)
         key = f"{who.id}:{body.session_id}"
         rev = revision(tx, who)
         c = tx.get("conversation", key)
         if c and c["revision"] != rev:
             raise HTTPException(409, "资料或权限已更新，请新建会话。")
+        if c and any(t.get("request_id") == body.request_id for t in c["turns"]):
+            return next(t["answer"] for t in c["turns"] if t.get("request_id") == body.request_id)  # 幂等重试
         if c and len(c["turns"]) >= 30:
             raise HTTPException(409, "此会话已达 30 轮，请新建会话。")
-        session = Session(who.id, c["doc_ids"] if c else [], c["claims"] if c else [])
+        turns_before = len(c["turns"]) if c else 0
+        session = Session(who.id, list(c["doc_ids"]) if c else [], list(c["claims"]) if c else [])
         settings = tx.get("settings", "main")
         options = {}
         judge = KeywordJudge()
@@ -501,17 +626,39 @@ def ask(body: AskBody, who=Depends(current)):
                 raise HTTPException(503, "模型服务必须使用 HTTPS。")
             options["generate"] = RemoteModel(base, key_value, settings["generation_model"], settings["max_tokens"])
             judge = RemoteJudge(RemoteModel(base, key_value, settings["judge_model"], 4096))
-        docs = documents(tx)
-        try:
-            a = answer_question(who, body.question, Store(docs), facts(tx), judge,
-                                PersistentAudit(tx), session=session, **options)
-        except ModelFailure as error:
-            raise HTTPException(503, str(error))
-        answer = {"text": a.text, "citations": cite([d for d in docs if d.id in a.citations]),
+        restricted = facts(tx)
+        store = build_store(tx, embedder_for(settings), INDEX_CACHE, session.doc_ids)
+
+    # 2) 锁外：检索、生成、结论检查。慢模型不再阻塞其他用户的登录、问答和配置
+    buffer, failure = BufferAudit(), None
+    try:
+        a = answer_question(who, body.question, store, restricted, judge, buffer,
+                            session=session, request_id=body.request_id, **options)
+    except ModelFailure as error:
+        a, failure = None, str(error)
+
+    # 3) 短事务：重新读取身份、权限版本和会话；任何一项变了就丢弃结果，不发出过期授权下生成的答案
+    with database.transaction() as tx:
+        audit = PersistentAudit(tx)
+        if failure:
+            audit.append({"event": "ask.failed", "user": who.id, "request_id": body.request_id,
+                          "question_hash": question_hash(body.question), "reason": "model_failure"})
+            return {"__failure__": failure}
+        row = tx.get("member", who.id)
+        if not row or not row["active"]:
+            raise HTTPException(401, "账号已停用。")
+        now_rev, c = revision(tx, identity(row)), tx.get("conversation", key)
+        if now_rev != rev or (len(c["turns"]) if c else 0) != turns_before:
+            audit.append({"event": "ask.discarded", "user": who.id, "request_id": body.request_id,
+                          "reason": "permissions_or_session_changed"})
+            return {"__failure__": "资料、权限或会话在回答期间发生变化，请重试。"}
+        for payload in buffer.payloads:
+            audit.append(payload)
+        answer = {"text": a.text, "citations": cite(a.sources),
                   "latency_ms": a.latency_ms, "data_source": "fake" if MODE == "demo" else "workspace"}
         tx.put("conversation", key, {"id": body.session_id, "owner": who.id,
                "title": body.question[:40] if not c else c["title"], "updated": time.time(), "revision": rev,
-               "turns": (c["turns"] if c else []) + [{"question": body.question, "answer": answer}],
+               "turns": (c["turns"] if c else []) + [{"question": body.question, "request_id": body.request_id, "answer": answer}],
                "doc_ids": session.doc_ids, "claims": session.claims})
         return answer
 
@@ -520,20 +667,50 @@ def ask(body: AskBody, who=Depends(current)):
 def audit_list(who=Depends(auditor)):
     with database.transaction() as tx:
         who = checked(tx, who, AUDIT_ROLES)
-        visible = {d.id for d in Store(documents(tx)).visible(who)}
-        entries = tx.all("audit_entry")
+        visible = {d.id for d in visible_docs(tx, who)}
+        readable_facts = {f.id for f in facts(tx) if can_read(who, f)}
+        full = who.role in ADMIN_ROLES
+        length = tx.count("audit_entry")
+        tail = tx.tail("audit_entry", 200)  # 只取最后 200 条，不加载整条链
+        PersistentAudit(tx).append({"event": "audit.viewed", "user": who.id})  # 看审计本身也要留痕
         rows = []
-        for i, e in list(enumerate(entries))[-200:]:
+        for i, e in ((length - len(tail) + n, row) for n, (_, row) in enumerate(tail)):
             p = e["payload"]
-            rows.append({**e, "index": i, "payload": {"guard": True, "question_hash": "", "blocked_facts": [],
-                         "degraded": False, **p, "docs": [d if d in visible else "[受限]" for d in p.get("docs", [])]}})
-        return {"entries": rows, "length": len(entries)}
+            hidden = not full and any(d not in visible for d in p.get("docs", []))
+            payload = {"guard": True, "question_hash": "", "blocked_facts": [], "degraded": False, **p,
+                       "docs": [d if d in visible else "[受限]" for d in p.get("docs", [])]}
+            if not full:
+                # 范围受限的审计员：不属于自己权限范围的事实，连编号都不能看到
+                payload["blocked_facts"] = [f if f in readable_facts else "[受限]" for f in payload["blocked_facts"]]
+                if hidden:
+                    payload["question_hash"] = ""
+            rows.append({**e, "index": i, "payload": payload})
+        return {"entries": rows, "length": length}
+
+
+def signing_key() -> bytes:
+    value = os.getenv("BUTLER_AUDIT_SIGNING_KEY", "")
+    if not value:
+        raise HTTPException(503, "未配置审计签名密钥（BUTLER_AUDIT_SIGNING_KEY）。")
+    return (Path(value).read_bytes() if not value.startswith("-----") and Path(value).exists() else value.encode())
+
+
+@router.get("/audit/export")
+def audit_export(who=Depends(admin)):
+    """完整原始链，哈希才能被独立验证；只给管理员/安全角色，范围受限的审计员看不到。"""
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+        key = signing_key()
+        entries = tx.all("audit_entry")
+        head = tx.get("meta", "audit_head")
+        checkpoint = sign_checkpoint(key, head["count"], head["hash"])
+        PersistentAudit(tx).append({"event": "audit.exported", "user": who.id, "count": head["count"]})
+        return {"entries": entries, "checkpoint": checkpoint}
 
 
 @router.get("/audit/verify")
 def audit_verify(who=Depends(auditor)):
     with database.transaction() as tx:
         who = checked(tx, who, AUDIT_ROLES)
-        entries = tx.all("audit_entry")
-        ok, bad = verify(entries, tx.get("meta", "audit_head")["hash"])
-        return {"ok": ok, "first_bad_index": bad, "length": len(entries)}
+        ok, bad = verify(tx.iter("audit_entry"), tx.get("meta", "audit_head")["hash"])
+        return {"ok": ok, "first_bad_index": bad, "length": tx.count("audit_entry")}

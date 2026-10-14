@@ -17,6 +17,8 @@ class Doc:
     title: str
     text: str
     acl: frozenset[str]  # 可读该文档的组；空集 = 无人可读（未知即拒绝）
+    spans: tuple[tuple[int, int], ...] = ()  # 检索返回的是原文的哪几段 [start, end)，引用据此定位；空 = 整篇
+    heading: str = ""
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,8 @@ class Fact:
     acl: frozenset[str]
     statement: str
     keywords: tuple[str, ...] = ()
+    premises: tuple[str, ...] = ()  # 推出该结论所需的资料编号：用户累计拿到全部前提 = 结论已可推出，与措辞无关
+    quorum: int = 0                 # >0：自动发现的前提只要求暴露其中 quorum 份就拦（人工登记的前提仍要求全部）
 
 
 @dataclass
@@ -34,7 +38,9 @@ class Answer:
     text: str
     citations: list[str] = field(default_factory=list)  # doc ids
     degraded: bool = False
+    status: str = "answered"  # answered | degraded | refused | citation_failed | no_evidence
     blocked_facts: list[str] = field(default_factory=list)  # 只给审计和演示对比用，不返回给提问者
     latency_ms: float = 0.0
     guard_ms: float = 0.0  # 结论检查额外耗时
     data_source: str = "fake"  # UI 必须展示
+    sources: list = field(default_factory=list)  # 实际被引用的文档（含原文位置），供界面展示出处

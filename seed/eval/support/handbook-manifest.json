@@ -1,0 +1,284 @@
+{
+  "repository": "https://gitlab.com/gitlab-com/content-sites/handbook",
+  "commit": "3069f4cdb25376410dc32de01555943a13367c18",
+  "snapshot_date": "2026-10-13",
+  "license_url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/LICENSE",
+  "documents": [
+    {
+      "path": "acquisitions/_index.md",
+      "sha256": "0ea7e45082679631091c7ba5843014bbc4db4be399505eae04a8799c5c525e01",
+      "bytes": 4648,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/acquisitions/_index.md"
+    },
+    {
+      "path": "acquisitions/acquisition-process/_index.md",
+      "sha256": "668ec3bff02364c3a3401070192f82690aa64bd036c247fc442480133d89171f",
+      "bytes": 34037,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/acquisitions/acquisition-process/_index.md"
+    },
+    {
+      "path": "acquisitions/acquisition-process/acquisition-process-communications.md",
+      "sha256": "cd2d4478cd05445a7061f41402fc570e317007288ee0df643fe6596ceafe2566",
+      "bytes": 6560,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/acquisitions/acquisition-process/acquisition-process-communications.md"
+    },
+    {
+      "path": "acquisitions/acquisition-process/integration.md",
+      "sha256": "672c5fb3dc26dba2d6ec4ebdaaf767eef619a3ff88d6482d28a53ecd524c41f5",
+      "bytes": 15042,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/acquisitions/acquisition-process/integration.md"
+    },
+    {
+      "path": "communication/ask-me-anything.md",
+      "sha256": "a89a447d9b2675a050b0379b9005134d6144768b56670ace47b37e00c332967c",
+      "bytes": 12437,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/communication/ask-me-anything.md"
+    },
+    {
+      "path": "communication/chat.md",
+      "sha256": "a2c397bc41e52a230d788af7d836aeaeb82589af1eba82ec463655baa26c1108",
+      "bytes": 32008,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/communication/chat.md"
+    },
+    {
+      "path": "communication/confidentiality-levels.md",
+      "sha256": "063963c90a4aafbd4649c117ec836050900b52da92ec2393a78d065d3ae7d486",
+      "bytes": 13450,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/communication/confidentiality-levels.md"
+    },
+    {
+      "path": "communication/deep-dives.md",
+      "sha256": "87e7cf5548c57dd0e89686a6c6e3974e737c21fd00a8e56b2f2413aca1971e41",
+      "bytes": 4207,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/communication/deep-dives.md"
+    },
+    {
+      "path": "communication/power-of-the-pause.md",
+      "sha256": "90f8d4ab6e238af0b77c6f8609ce11d98fe8abbe72afc61b8e8871e2e0354681",
+      "bytes": 2795,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/communication/power-of-the-pause.md"
+    },
+    {
+      "path": "finance/travel/_index.md",
+      "sha256": "9eb826c1d73b1a8a3d8413e3b0d788a50624bdb3817d80b45cc12e5699b4488f",
+      "bytes": 8981,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/finance/travel/_index.md"
+    },
+    {
+      "path": "legal/employment-law.md",
+      "sha256": "dd230662d448f7897fa67cef4b623e7ba537cdb6ebc752f71c606e8db4512849",
+      "bytes": 4198,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/legal/employment-law.md"
+    },
+    {
+      "path": "legal/materials-legal-review-process.md",
+      "sha256": "4c0a78f94714022763379bf4ccef2b4454e16cfaca623561be36805c16304aa1",
+      "bytes": 21953,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/legal/materials-legal-review-process.md"
+    },
+    {
+      "path": "legal/privacy/employee-privacy-policy.md",
+      "sha256": "0ec2aeb0b52cc194073bab62bd88ee5c4f412fe5c343827af0e45fe51b24aac1",
+      "bytes": 48775,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/legal/privacy/employee-privacy-policy.md"
+    },
+    {
+      "path": "legal/record-retention-policy.md",
+      "sha256": "d4d8c4812e503b16666af8b17b08b4f3036f97b6736e4f9fbee7f5039d83841c",
+      "bytes": 21349,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/legal/record-retention-policy.md"
+    },
+    {
+      "path": "legal/risk-management-dispute-resolution.md",
+      "sha256": "04b84720cf652935eee9e9fe0045e1842210be707eb0f1b4c5c4021c2bfcc88b",
+      "bytes": 8015,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/legal/risk-management-dispute-resolution.md"
+    },
+    {
+      "path": "legal/trade-compliance.md",
+      "sha256": "fae85faa950736aab5d4f170213e8e5bcefa45bf20a309765e614fd92f29b916",
+      "bytes": 3651,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/legal/trade-compliance.md"
+    },
+    {
+      "path": "people-group/360-feedback.md",
+      "sha256": "ffa90e5fb56baaab83174357235fabe4a7708f444060950b8befc2a2bbbeede3",
+      "bytes": 15505,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/360-feedback.md"
+    },
+    {
+      "path": "people-group/competencies.md",
+      "sha256": "a2a758e5c34a273d619277a4985965c0bf89019bba8323e7b090919840d9fcb7",
+      "bytes": 8403,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/competencies.md"
+    },
+    {
+      "path": "people-group/contracts-probation-periods.md",
+      "sha256": "ba59fc9883dfc452326fbe95b45db8e7df33d3bb16fbe0857287afb56ff37ef2",
+      "bytes": 37278,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/contracts-probation-periods.md"
+    },
+    {
+      "path": "people-group/general-onboarding/onboarding-buddies.md",
+      "sha256": "436321d3da0cfe9b46644bce434e67faf3836eb1adcc48de8faaefd44a841adf",
+      "bytes": 11208,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/general-onboarding/onboarding-buddies.md"
+    },
+    {
+      "path": "people-group/givelab-volunteer-initiatives.md",
+      "sha256": "42e449c45da5440ff8c5d0586912a370e66930085fe7f9839fe9472b57fabc41",
+      "bytes": 4359,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/givelab-volunteer-initiatives.md"
+    },
+    {
+      "path": "people-group/guidance-on-feedback.md",
+      "sha256": "3a7007a0f1358c0001859a775cd9bdac9f62de5cb7d4ad897301bf183f945a71",
+      "bytes": 14188,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/guidance-on-feedback.md"
+    },
+    {
+      "path": "people-group/offboarding/_index.md",
+      "sha256": "3c5d2ad208508f923a3112f1b10d3c94ec43986d7c79b14b9300495d11bdf179",
+      "bytes": 40846,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/offboarding/_index.md"
+    },
+    {
+      "path": "people-group/offboarding/faq.md",
+      "sha256": "7d34ee8445d159bb25bd54132be70f44fcd67d05bc636b4d5d5f49d069f7d824",
+      "bytes": 14877,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/offboarding/faq.md"
+    },
+    {
+      "path": "people-group/offboarding/offboarding_standards.md",
+      "sha256": "7e2cbc42b09cb534aa0e6d5a48f7938cd7e9785f55e766b7a708e96819144d24",
+      "bytes": 9096,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/offboarding/offboarding_standards.md"
+    },
+    {
+      "path": "people-group/pronouns.md",
+      "sha256": "1aa115e05bcdbad793eda3a7d7863c050593d6cb2efb4ce663283fec1fcb3a67",
+      "bytes": 10997,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/pronouns.md"
+    },
+    {
+      "path": "people-group/relocation.md",
+      "sha256": "a5d53278c88760e95bfc76ef83e9b5e302126181f0bd3c0964440c7eee692c44",
+      "bytes": 49203,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/relocation.md"
+    },
+    {
+      "path": "people-group/time-off-and-absence/leave-types.md",
+      "sha256": "b956207cc4522d0608e44184255b3360e63b47abe9e70db32c43652efedea87c",
+      "bytes": 18573,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/time-off-and-absence/leave-types.md"
+    },
+    {
+      "path": "people-group/time-off-and-absence/time-off-types.md",
+      "sha256": "7597b2c20fcdfac920bd75045f222afbd462596b0b5a768b6dee90b4ae8f626f",
+      "bytes": 30818,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/time-off-and-absence/time-off-types.md"
+    },
+    {
+      "path": "people-group/visas.md",
+      "sha256": "8c3b597d97f4398b5c1fba11bd48205f07d01719103f94383dcaf11c9b6eac3d",
+      "bytes": 44564,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/people-group/visas.md"
+    },
+    {
+      "path": "security/controlled-document-procedure.md",
+      "sha256": "1f7874f17632deafffb72dfa095d2f0463ba53c10714767dbc9196ea589793b1",
+      "bytes": 10013,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/security/controlled-document-procedure.md"
+    },
+    {
+      "path": "security/engaging-with-security.md",
+      "sha256": "73ef3831a2754aa681b45f3f8143399006ae4aa057371635de849007f98d97a6",
+      "bytes": 21227,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/security/engaging-with-security.md"
+    },
+    {
+      "path": "security/gitleaks.md",
+      "sha256": "5952c75f18d3a13fbe43b3e14545758f1cb1bf768cc323245233e33f10bc1d38",
+      "bytes": 2628,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/security/gitleaks.md"
+    },
+    {
+      "path": "security/password-guidelines.md",
+      "sha256": "29b7393789d984ae51a8046d2f97ae035cfaa00840a3bf128bed808b35eab6dc",
+      "bytes": 26692,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/security/password-guidelines.md"
+    },
+    {
+      "path": "security/pgp_process.md",
+      "sha256": "d0ccf6a7ff47347ac3ae3891a38bee7668075d9801623200af453c0bdbf9a0eb",
+      "bytes": 1800,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/security/pgp_process.md"
+    },
+    {
+      "path": "security/secure-coding-training.md",
+      "sha256": "9fbc2f7e020e19a9fdb90c51eb2b16562e61a5baf4e742589ab47c0cd671e867",
+      "bytes": 12916,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/security/secure-coding-training.md"
+    },
+    {
+      "path": "security/security-and-technology-policy-exception.md",
+      "sha256": "901229e75e35417575a940a076ba4da0364d76d999258f98f27659ee4ca30dac",
+      "bytes": 3659,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/security/security-and-technology-policy-exception.md"
+    },
+    {
+      "path": "security/security-operations/sirt/engaging-security-on-call.md",
+      "sha256": "be05e0763aab483a649dcd3ea0ba25ba6c1329b662277d05aac1f44a32233b95",
+      "bytes": 4597,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/security/security-operations/sirt/engaging-security-on-call.md"
+    },
+    {
+      "path": "total-rewards/benefits/general-and-entity-benefits/bv-benefits-netherlands.md",
+      "sha256": "9231ec5e2ce58cd9870b9908e58a5ffbc5c55bd07045a10fcef839362c198222",
+      "bytes": 19516,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/total-rewards/benefits/general-and-entity-benefits/bv-benefits-netherlands.md"
+    },
+    {
+      "path": "total-rewards/benefits/general-and-entity-benefits/financial-wellness.md",
+      "sha256": "77f8462d41ca23b44e322be3d5451e146eeaf71fc91faca9dfa754675de5e293",
+      "bytes": 7234,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/total-rewards/benefits/general-and-entity-benefits/financial-wellness.md"
+    },
+    {
+      "path": "total-rewards/benefits/general-and-entity-benefits/inc-benefits-us/_index.md",
+      "sha256": "2bb990b1c6a5cb6528aea70465e1d39eec3fef575edcf7a9ab20b9ab8346cb73",
+      "bytes": 39782,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/total-rewards/benefits/general-and-entity-benefits/inc-benefits-us/_index.md"
+    },
+    {
+      "path": "total-rewards/benefits/general-and-entity-benefits/ltd-benefits-uk.md",
+      "sha256": "be47d1699ee7654cc0faf1c690aa150cec5d960e58f8885cbf929f8ad28cf39c",
+      "bytes": 35942,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/total-rewards/benefits/general-and-entity-benefits/ltd-benefits-uk.md"
+    },
+    {
+      "path": "total-rewards/benefits/general-and-entity-benefits/singapore-pte-ltd.md",
+      "sha256": "3b370ff5ce5b8310625ded204e839934d78b60d4cabef9de611141a6e3f3a701",
+      "bytes": 11511,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/total-rewards/benefits/general-and-entity-benefits/singapore-pte-ltd.md"
+    },
+    {
+      "path": "total-rewards/benefits/modern-health.md",
+      "sha256": "8e9adb42583835d35d2de252eb18c0af7cba5f62535affd3756da1784dade8c2",
+      "bytes": 7148,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/total-rewards/benefits/modern-health.md"
+    },
+    {
+      "path": "total-rewards/benefits/parental-leave-toolkit.md",
+      "sha256": "8c6c4fca9d2c67b1f122edd48c027892001f06982b1add587238e1cf09732bb7",
+      "bytes": 9893,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/total-rewards/benefits/parental-leave-toolkit.md"
+    },
+    {
+      "path": "total-rewards/incentives.md",
+      "sha256": "ad1596578764518a2dc309716ba6236ab14e1a726edfec8ce0dd9443504b134c",
+      "bytes": 40235,
+      "url": "https://gitlab.com/gitlab-com/content-sites/handbook/-/raw/3069f4cdb25376410dc32de01555943a13367c18/content/handbook/total-rewards/incentives.md"
+    }
+  ]
+}

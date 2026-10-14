@@ -1,0 +1,47 @@
+{
+  "seed": 5,
+  "features": [
+    "cover_mass",
+    "shared_log",
+    "max_idf",
+    "specificity",
+    "tfidf_cos",
+    "embed_cos",
+    "stmt_overlap",
+    "top3_share",
+    "top1_in"
+  ],
+  "coef": [
+    1.101,
+    0.372,
+    5.219,
+    9.626,
+    6.254,
+    2.856,
+    -1.713,
+    6.862,
+    -0.604
+  ],
+  "threshold": 0.3,
+  "validation": {
+    "chains": 24,
+    "orphans": 0,
+    "recall_both_non_orphan": 1.0,
+    "recall_fragment_a": 1.0,
+    "recall_fragment_b_orphan": 0.0,
+    "avg_false_premises_per_fact": 0.0,
+    "facts_with_any_false_premise": 0.0
+  },
+  "test_unseen_kinds": {
+    "chains": 30,
+    "orphans": 6,
+    "recall_both_non_orphan": 1.0,
+    "recall_fragment_a": 1.0,
+    "recall_fragment_b_orphan": 0.0,
+    "avg_false_premises_per_fact": 0.033,
+    "facts_with_any_false_premise": 0.033
+  },
+  "train_chains": 48,
+  "train_pairs": 562,
+  "positives": 96
+}
