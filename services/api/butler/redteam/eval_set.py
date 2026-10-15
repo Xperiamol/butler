@@ -123,8 +123,8 @@ class OracleStore:
         self.turn += 1
         return out
 
-    def get_many(self, ids):
-        return self.base.get_many(ids)
+    def get_many(self, ids, spans=None):
+        return self.base.get_many(ids, spans)
 
     def visible(self, identity):
         return self.base.visible(identity)
