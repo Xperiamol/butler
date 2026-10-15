@@ -45,6 +45,19 @@ def default_generator() -> SimulatedGenerator:
     return _default_generator
 
 
+MAX_CONTEXT_CHARS = 24000
+
+
+def fit_context(context: list[Doc], limit: int) -> list[Doc]:
+    """上下文总长度预算：超出时先丢最靠后的资料（历史排在前面，检索到的新资料排在后面，所以从后往前丢是错的——
+    这里从最长的开始截断，保证每份资料都还在、引用不失效）。"""
+    total = sum(len(d.text) for d in context)
+    if total <= limit:
+        return context
+    share = max(limit // max(len(context), 1), 400)
+    return [d if len(d.text) <= share else replace(d, text=d.text[:share]) for d in context]
+
+
 def facts_only(docs: list[Doc]) -> str:
     return DEGRADED_PREFIX + "\n".join(f"- [{d.id}] {d.text}" for d in docs)
 
@@ -61,9 +74,10 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
     generate = generate or default_generator()
     docs = store.search(identity, question)
     # 会话里引用过的文档也进入上下文（多轮对话），但每轮都实时复核权限：撤权后旧对话也拿不到
-    history = [d for d in store.get_many(session.doc_ids if session else []) if can_read(identity, d)]
+    history = [d for d in store.get_many(session.doc_ids if session else [], session.doc_spans if session else None) if can_read(identity, d)]
     context = history + [d for d in docs if d.id not in {h.id for h in history}]
     assert all(can_read(identity, d) for d in context)  # 不变量：生成器永远看不到无权文档
+    context = fit_context(context, MAX_CONTEXT_CHARS)
     quarantined: list[str] = []
     if guard and injection:
         # 最后一道提示注入防线（入库时已扫过一次）：命中的资料不进生成上下文；其余资料拆掉定界符/角色伪装
@@ -111,7 +125,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
         guard_ms = (time.perf_counter() - g0) * 1000
 
     if session is not None:
-        session.remember(cited, text)
+        session.remember(cited, text, {d.id: [list(x) for x in d.spans] for d in context if d.id in set(cited) and d.spans})
     audit.append({"user": identity.id, "question_hash": question_hash(question), "guard": guard,
                   "docs": cited, "degraded": status == "degraded", "status": status, "request_id": request_id,
                   "quarantined": quarantined, "question_flagged": bool(guard and injection and scan(question).flagged),

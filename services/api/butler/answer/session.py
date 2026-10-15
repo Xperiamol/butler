@@ -8,10 +8,14 @@ class Session:
     identity_id: str
     doc_ids: list[str] = field(default_factory=list)   # 本会话已引用过的文档
     claims: list[str] = field(default_factory=list)    # 本会话已放行的回答
+    doc_spans: dict[str, list[list[int]]] = field(default_factory=dict)   # 引用过的段落在原文里的位置；多轮时只带回这些段落，不带整篇
 
-    def remember(self, doc_ids: list[str], text: str) -> None:
+    def remember(self, doc_ids: list[str], text: str, spans: dict[str, list[list[int]]] | None = None) -> None:
         self.doc_ids += [d for d in doc_ids if d not in self.doc_ids]
         self.claims.append(text)
+        for k, v in (spans or {}).items():
+            merged = self.doc_spans.setdefault(k, [])
+            merged += [list(x) for x in v if list(x) not in merged]
 
 
 class SessionStore:

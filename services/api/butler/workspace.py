@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from .acl.policy import can_read
 from .answer.mosaic import KeywordJudge
 from .answer.pipeline import answer_question, question_hash
-from .answer.remote import ModelFailure, RemoteJudge, RemoteModel
+from .answer.remote import ModelFailure, RemoteJudge, RemoteModel, llm_env
 from .answer.session import Session
 from .audit.chain import GENESIS, _h, verify
 from .audit.checkpoint import sign_checkpoint
@@ -115,8 +115,7 @@ INDEX_CACHE = IndexCache()
 
 def embedder_for(settings):
     """远程嵌入需要服务端密钥和配置的模型名；否则用离线哈希嵌入（不外发任何正文）。"""
-    key, model = os.getenv("HUNYUAN_API_KEY"), (settings or {}).get("embedding_model", "")
-    base = os.getenv("HUNYUAN_BASE_URL", "https://api.hunyuan.cloud.tencent.com/v1")
+    (key, base), model = llm_env(), (settings or {}).get("embedding_model", "")
     if MODE == "enterprise" and key and model and base.startswith("https://"):
         return RemoteEmbedder(base, key, model)
     return HashingEmbedder()
@@ -273,7 +272,7 @@ def status(who=Depends(current)):
     with database.transaction() as tx:
         who = checked(tx, who)
         settings = tx.get("settings", "main")
-        configured = bool(os.getenv("HUNYUAN_API_KEY") and settings["generation_model"] and settings["judge_model"])
+        configured = bool(llm_env()[0] and settings["generation_model"] and settings["judge_model"])
         return {"organization": settings["organization"], "mode": MODE, "auth_mode": passwords.auth_mode(), "database": database.engine.dialect.name,
                 "model_ready": MODE == "demo" or configured,
                 "visible_documents": len(visible_docs(tx, who)),
@@ -287,8 +286,8 @@ def settings_get(who=Depends(admin)):
     with database.transaction() as tx:
         who = checked(tx, who, ADMIN_ROLES)
         return {**tx.get("settings", "main"), "mode": MODE,
-                "model_key_configured": bool(os.getenv("HUNYUAN_API_KEY")),
-                "model_base_url": os.getenv("HUNYUAN_BASE_URL", "https://api.hunyuan.cloud.tencent.com/v1"),
+                "model_key_configured": bool(llm_env()[0]),
+                "model_base_url": llm_env()[1],
                 "oidc_configured": bool(os.getenv("BUTLER_OIDC_ISSUER")),
                 "auth_mode": passwords.auth_mode(),
                 "database": database.engine.dialect.name}
@@ -613,15 +612,14 @@ def _ask(body: AskBody, who):
         if c and len(c["turns"]) >= 30:
             raise HTTPException(409, "此会话已达 30 轮，请新建会话。")
         turns_before = len(c["turns"]) if c else 0
-        session = Session(who.id, list(c["doc_ids"]) if c else [], list(c["claims"]) if c else [])
+        session = Session(who.id, list(c["doc_ids"]) if c else [], list(c["claims"]) if c else [], dict(c.get("doc_spans", {})) if c else {})
         settings = tx.get("settings", "main")
         options = {}
         judge = KeywordJudge()
         if MODE == "enterprise":
-            key_value = os.getenv("HUNYUAN_API_KEY")
+            key_value, base = llm_env()
             if not key_value or not settings["generation_model"] or not settings["judge_model"]:
                 raise HTTPException(503, "请先在配置中心完成生成模型和安全检查模型配置。")
-            base = os.getenv("HUNYUAN_BASE_URL", "https://api.hunyuan.cloud.tencent.com/v1")
             if not base.startswith("https://"):
                 raise HTTPException(503, "模型服务必须使用 HTTPS。")
             options["generate"] = RemoteModel(base, key_value, settings["generation_model"], settings["max_tokens"])
@@ -659,7 +657,7 @@ def _ask(body: AskBody, who):
         tx.put("conversation", key, {"id": body.session_id, "owner": who.id,
                "title": body.question[:40] if not c else c["title"], "updated": time.time(), "revision": rev,
                "turns": (c["turns"] if c else []) + [{"question": body.question, "request_id": body.request_id, "answer": answer}],
-               "doc_ids": session.doc_ids, "claims": session.claims})
+               "doc_ids": session.doc_ids, "claims": session.claims, "doc_spans": session.doc_spans})
         return answer
 
 

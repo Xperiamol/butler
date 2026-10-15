@@ -48,7 +48,7 @@ class Store:
         self._grams = {d.id: _bigrams(d.title + d.text) for d in docs}
         self._index: dict[frozenset, tuple] = {}  # 按权限组缓存：同一组用户共享可见集合与 IDF（只含其可见文档的统计）
 
-    def get_many(self, ids: list[str]) -> list[Doc]:
+    def get_many(self, ids: list[str], spans=None) -> list[Doc]:
         return [self._by_id[i] for i in ids if i in self._by_id]
 
     def visible(self, identity: Identity) -> list[Doc]:

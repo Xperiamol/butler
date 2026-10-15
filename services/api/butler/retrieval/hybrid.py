@@ -35,6 +35,7 @@ POOL = 30
 RRF_K = 60
 MAX_DOCS = 6
 MAX_CHUNKS = 10
+HISTORY_CHARS = 3000     # 历史文档没有记录段落位置时取开头多少字
 INJECTION_BLOCK = 0.5   # 入库扫描风险分达到这个值（或规则命中）的块被隔离
 
 
@@ -176,9 +177,20 @@ class HybridStore:
     def visible(self, identity: Identity) -> list[Doc]:
         return [self._doc(m) for m in self.metas if self._readable(identity, m)]
 
-    def get_many(self, ids: list[str]) -> list[Doc]:
+    def get_many(self, ids: list[str], spans: dict | None = None) -> list[Doc]:
+        """会话历史里引用过的文档：只带回当时引用的段落（按原文位置），没有位置的长文只取开头——不把整篇长文塞进下一轮。"""
         by = {m["id"]: m for m in self.metas}
-        return [self._doc(by[i], self.history.get(i, "")) for i in ids if i in by and i in self.history]
+        out = []
+        for i in ids:
+            if i not in by or i not in self.history:
+                continue
+            full, sp = self.history[i], (spans or {}).get(i)
+            if sp:
+                text, used = "\n…\n".join(full[a:b] for a, b in sp), tuple(tuple(x) for x in sp)
+            else:
+                text, used = full[:HISTORY_CHARS], ()
+            out.append(Doc(i, by[i]["source"], by[i]["title"], text, frozenset(by[i]["acl"]), used))
+        return out
 
     # ---- 检索 ----
     def search(self, identity: Identity, query: str, k: int = MAX_DOCS) -> list[Doc]:

@@ -81,3 +81,20 @@ def test_bracketed_words_that_exist_in_the_source_are_text_not_citations():
     a = ask("- [log] 日志级别包括 [warning] 和 [info]，章节目录见 [TOC]。", docs=(doc,), question="运行日志说明里的日志级别")
     assert a.status == "answered"
     assert ask("日志级别见 [fake-doc-9]。[log]", docs=(doc,), question="运行日志说明里的日志级别").status == "citation_failed"
+
+
+def test_multi_turn_history_carries_only_cited_passages_and_context_has_a_budget():
+    from butler.answer.pipeline import MAX_CONTEXT_CHARS, fit_context
+    from butler.answer.session import Session
+    from butler.retrieval.eval import hybrid_store
+    long = Doc("big", "confluence", "旅行制度", "办公室绿植由行政统一养护。" * 400 + "欧洲住宿每晚上限为 180 欧元，需附发票。" + "年会筹备由行政负责。" * 400, frozenset({"staff"}))
+    store = hybrid_store([long, *FILLER])[0]
+    s = Session("u")
+    gen = lambda q, ctx: "\n".join(f"- [{d.id}] {d.text}" for d in ctx)
+    a1 = answer_question(ME, "欧洲住宿每晚上限是多少", store, [], KeywordJudge(), AuditLog(), session=s, generate=gen)
+    assert a1.status == "answered" and s.doc_spans.get("big")
+    seen = []
+    answer_question(ME, "继续说说", store, [], KeywordJudge(), AuditLog(), session=s, generate=lambda q, ctx: seen.append(sum(len(d.text) for d in ctx)) or "- [big] 180")
+    assert seen and seen[0] < 2000     # 带回的是当时引用的段落，不是 ~9000 字的整篇
+    ctx = [Doc(f"d{i}", "s", "t", "字" * 9000, frozenset({"staff"})) for i in range(8)]
+    assert sum(len(d.text) for d in fit_context(ctx, MAX_CONTEXT_CHARS)) <= MAX_CONTEXT_CHARS + 8 * 400

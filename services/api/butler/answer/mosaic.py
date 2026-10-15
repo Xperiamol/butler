@@ -62,6 +62,18 @@ class CombinedJudge:
     def entails(self, answer: str, fact: Fact) -> bool:
         return any(j.entails(answer, fact) for j in self.judges)
 
+    def entails_many(self, answer: str, facts: list[Fact]) -> list[Fact]:
+        """批量：有批量接口的判官（LLM）一次判一批，没有的逐条判；各判官结果取并集。"""
+        hit: dict[str, Fact] = {}
+        for j in self.judges:
+            res = j.entails_many(answer, facts) if hasattr(j, "entails_many") else [f for f in facts if j.entails(answer, f)]
+            hit.update({f.id: f for f in res})
+        return list(hit.values())
+
+    @property
+    def scan_limit(self) -> int:
+        return max(getattr(j, "scan_limit", FULL_SCAN_LIMIT) for j in self.judges)
+
     def bind(self, context_texts: list[str]) -> "CombinedJudge":
         return CombinedJudge(*[j.bind(context_texts) if hasattr(j, "bind") else j for j in self.judges])
 
@@ -134,7 +146,7 @@ def _batches(facts: list[Fact]) -> list[list[Fact]]:
 def check(identity: Identity, answer: str, facts: list[Fact], judge: Judge) -> list[Fact]:
     """返回被答案触及的受限事实（空 = 通过）。"""
     candidates = restricted_facts(identity, facts)
-    if len(candidates) > FULL_SCAN_LIMIT:
+    if len(candidates) > getattr(judge, "scan_limit", FULL_SCAN_LIMIT):
         candidates = judge.shortlist(answer, candidates) if hasattr(judge, "shortlist") else shortlist(answer, candidates)
         if len(candidates) > MAX_CANDIDATES:
             raise GuardBudgetExceeded(f"{len(candidates)} candidates")

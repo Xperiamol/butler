@@ -63,3 +63,18 @@ def test_anchored_judge_ignores_keyword_in_unrelated_context_but_still_catches_t
     assert j.entails(leak, f)
     no_names = Fact("g", "s", frozenset({"hr"}), "layoffs next quarter", ("layoffs",))
     assert j.entails("layoffs are coming", no_names)                          # 没有专有名词时退回关键词行为
+
+
+def test_combined_judge_batches_llm_judges_instead_of_one_call_per_fact():
+    from butler.answer.mosaic import AnchoredKeywordJudge, CombinedJudge
+
+    class Batch:
+        calls = 0
+        scan_limit = 100
+        def entails_many(self, answer, facts):
+            Batch.calls += 1
+            return [f for f in facts if "秘密" in answer]
+    facts = [Fact(f"f{i}", "s", frozenset({"hr"}), f"事实{i}", (f"独特词{i}",)) for i in range(40)]
+    judge = CombinedJudge(AnchoredKeywordJudge(), Batch())
+    assert len(check(ME, "这里提到了秘密", facts, judge)) == 40 and Batch.calls == 1
+    assert judge.scan_limit >= 25
