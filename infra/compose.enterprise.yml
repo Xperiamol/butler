@@ -24,6 +24,8 @@ services:
       BUTLER_ADMIN_PASSWORD: ${BUTLER_ADMIN_PASSWORD:-}
       BUTLER_OIDC_ISSUER: ${BUTLER_OIDC_ISSUER:-}
       BUTLER_BOOTSTRAP_ADMIN_SUB: ${BUTLER_BOOTSTRAP_ADMIN_SUB:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
       HUNYUAN_API_KEY: ${HUNYUAN_API_KEY:-}
       HUNYUAN_BASE_URL: ${HUNYUAN_BASE_URL:-https://api.hunyuan.cloud.tencent.com/v1}
     depends_on:
@@ -42,6 +44,8 @@ services:
       DATABASE_URL: postgresql://butler:${BUTLER_DB_PASSWORD}@db:5432/butler
       BUTLER_INTERNAL_TOKEN: ${BUTLER_INTERNAL_TOKEN}
       BUTLER_AUTH_MODE: ${BUTLER_AUTH_MODE:-local}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
       HUNYUAN_API_KEY: ${HUNYUAN_API_KEY:-}
       HUNYUAN_BASE_URL: ${HUNYUAN_BASE_URL:-https://api.hunyuan.cloud.tencent.com/v1}
       BUTLER_SYNC_DIR: /app/.runtime/sync
