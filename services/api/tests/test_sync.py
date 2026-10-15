@@ -209,3 +209,24 @@ def test_connector_rejects_unsafe_locations_and_branches(tmp_path):
         GitRepoConnector("x", "ssh://host/repo", "main", tmp_path, [])
     with pytest.raises(GitError):
         GitRepoConnector("x", "https://example.com/r.git", "--upload-pack=evil", tmp_path, [])
+
+
+def test_grant_then_immediate_revoke_both_take_effect(env):
+    """回归：对账任务的去重键曾经按“分钟”取整，同一分钟里先授权再撤销，撤销会被当成重复任务丢掉。"""
+    repo, db, conn = env
+    sync_all(db, conn)
+    assert search(db, ALL, "hotel cap in Europe") == ["handbook:handbook/travel.md"]
+    base = list(conn.rules)
+    revoked = sorted([{"prefix": "handbook/travel.md", "principals": ["role:exec"]}] + base, key=lambda r: -len(r["prefix"]))
+    conn.rules = list(revoked)
+    assert sync.reconcile(db, conn)["queued"] == 1
+    sync.drain(db, conn, PMAP, EMB)
+    assert search(db, ALL, "hotel cap in Europe") == []                       # 撤权生效
+    conn.rules = list(base)
+    assert sync.reconcile(db, conn)["queued"] == 1                              # 马上再授权，同一秒内也不被当成重复
+    sync.drain(db, conn, PMAP, EMB)
+    assert search(db, ALL, "hotel cap in Europe") == ["handbook:handbook/travel.md"]
+    conn.rules = list(revoked)
+    assert sync.reconcile(db, conn)["queued"] == 1                              # 再撤销：状态和第一次相同，也不被丢掉
+    sync.drain(db, conn, PMAP, EMB)
+    assert search(db, ALL, "hotel cap in Europe") == []
