@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, ConfigDict
 
 from .acl.policy import can_read
@@ -255,7 +256,7 @@ def model_plan(settings):
             raise HTTPException(503, "模型服务必须使用 HTTPS。")
     elif not (key_value and generation and base.startswith("https://")):
         return {}, KeywordJudge(), False
-    return {"generate": RemoteModel(base, key_value, generation, settings["max_tokens"], chat=True)}, RemoteJudge(RemoteModel(base, key_value, judging, 4096)), True
+    return {"generate": RemoteModel(base, key_value, generation, max(settings["max_tokens"], 3000), chat=True)}, RemoteJudge(RemoteModel(base, key_value, judging, 4096)), True
 
 
 def revision(tx, who):
@@ -762,6 +763,30 @@ def lab_tamper(body: TamperBody, who=Depends(auditor)):
             "before": before[:12], "after": entries[body.index]["hash"][:12]}
 
 
+@router.post("/ask/stream")
+def ask_stream(body: AskBody, who=Depends(current)):
+    """和 /ask 同一条流程，但把阶段（检索到哪些资料、生成、检查）按行推送，最后一行是完整回答。"""
+    import queue, threading
+    events: queue.Queue = queue.Queue()
+
+    def worker():
+        try:
+            result = _ask(body, who, progress=lambda stage, **data: events.put({"event": "stage", "stage": stage, **data}))
+            events.put({"event": "error", "message": result["__failure__"]} if "__failure__" in result else {"event": "done", "answer": result})
+        except HTTPException as error:
+            events.put({"event": "error", "message": str(error.detail), "status": error.status_code})
+        except Exception:
+            events.put({"event": "error", "message": "回答失败，请稍后重试。"})
+        events.put(None)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    def lines():
+        while (item := events.get()) is not None:
+            yield json.dumps(item, ensure_ascii=False) + "\n"
+    return StreamingResponse(lines(), media_type="application/x-ndjson", headers={"cache-control": "no-store", "x-accel-buffering": "no"})
+
+
 class BufferAudit:
     """模型调用期间不持有数据库锁：审计先缓存，提交时在事务里按序写入哈希链。"""
 
@@ -821,7 +846,7 @@ def lab_compare(body: LabCompareBody, who=Depends(current)):
     return {**out, "answering": "live" if live else "rules", "model": (settings.get("generation_model") or os.getenv("BUTLER_LLM_MODEL", "")) if live else ""}
 
 
-def _ask(body: AskBody, who):
+def _ask(body: AskBody, who, progress=None):
     # 1) 短事务：校验身份、取会话/资料/事实快照
     with database.transaction() as tx:
         row = tx.get("member", who.id)
@@ -849,7 +874,7 @@ def _ask(body: AskBody, who):
     buffer, failure = BufferAudit(), None
     try:
         a = answer_question(who, body.question, store, restricted, judge, buffer,
-                            session=session, request_id=body.request_id, approved=approved, **options)
+                            session=session, request_id=body.request_id, approved=approved, progress=progress, **options)
     except ModelFailure as error:
         a, failure = None, str(error)
 
@@ -870,7 +895,7 @@ def _ask(body: AskBody, who):
             return {"__failure__": "资料、权限或会话在回答期间发生变化，请重试。"}
         for payload in buffer.payloads:
             audit.append(payload)
-        answer = {"text": a.text, "citations": cite(a.sources), "status": a.status,
+        answer = {"text": a.text, "citations": cite(a.sources), "status": a.status, "followups": a.followups,
                   "latency_ms": a.latency_ms, "guard_ms": a.guard_ms, "data_source": "fake" if MODE == "demo" else "workspace"}
         if a.status == "needs_approval":
             answer["approval_id"] = request_approval(tx, audit, who, a.blocked_facts, body.question)

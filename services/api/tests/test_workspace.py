@@ -1,3 +1,4 @@
+import json
 import pytest
 from fastapi.testclient import TestClient
 
@@ -412,3 +413,16 @@ def test_lab_scenarios_and_seeded_chains_follow_acl(db):
         assert f["premises"] == ["lab:c09:0", "lab:c09:1"] and f["acl"] == ["leadership"]
     seen = {c["id"] for c in client.get("/workspace/sources", headers=headers("ken")).json()["docs"]}
     assert "lab:c09:0" in seen and "lab:c09:s" not in seen
+
+
+def test_ask_stream_reports_stages_then_the_answer(db):
+    r = client.post("/workspace/ask/stream", headers=headers("alice"), json={"question": "支付 API 限流是多少？", "session_id": "st1"})
+    events = [json.loads(l) for l in r.text.splitlines() if l.strip()]
+    assert [e["event"] for e in events][-1] == "done" and events[-1]["answer"]["citations"]
+    stages = [e["stage"] for e in events if e["event"] == "stage"]
+    assert stages[0] == "retrieved" and "generating" in stages and "checking" in stages
+    assert events[0]["docs"] and all("title" in d for d in events[0]["docs"])
+    # 被拦的问题没有生成阶段，也不会推送受限信息
+    k = client.post("/workspace/ask/stream", headers=headers("ken"), json={"question": "Payments 团队 Q4 预算为 0，供应商合同又暂停，这意味着什么？", "session_id": "st2"})
+    ke = [json.loads(l) for l in k.text.splitlines() if l.strip()]
+    assert ke[-1]["answer"]["status"] == "needs_approval" and "裁撤" not in k.text and not any(e.get("stage") == "generating" for e in ke)

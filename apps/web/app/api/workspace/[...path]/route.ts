@@ -8,7 +8,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
   const path = (await context.params).path.join("/");
   const method = request.method;
   const allowed = method === "GET" ? /^(me|status|sources|settings|members|knowledge|conversations(?:\/[\w-]+)?|audit(?:\/verify)?|eval(?:\/cases)?|stats|lab\/scenarios|approvals(?:\/[\w-]+)?)$/ :
-    method === "PUT" ? /^(settings|members\/[\w-]+(?:\/password)?|account\/password)$/ : /^(ask|knowledge\/import|members|lab\/scan|lab\/tamper|lab\/compare|approvals\/[\w-]+\/decide)$/;
+    method === "PUT" ? /^(settings|members\/[\w-]+(?:\/password)?|account\/password)$/ : /^(ask(?:\/stream)?|knowledge\/import|members|lab\/scan|lab\/tamper|lab\/compare|approvals\/[\w-]+\/decide)$/;
   if (!allowed.test(path)) return Response.json({ error: "接口不存在。" }, { status: 404 });
   if ((/^(settings|members|knowledge)/.test(path) || path === "approvals" || /^approvals\/[\w-]+\/decide$/.test(path)) && !["admin", "security"].includes(who.role)) return Response.json({ error: "需要管理员权限。" }, { status: 403 });
   if ((/^(audit|eval|stats)/.test(path) || path === "lab/tamper") && !["admin", "security", "auditor"].includes(who.role)) return Response.json({ error: "需要审计权限。" }, { status: 403 });
@@ -30,6 +30,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
     const response = await backend(target, { method,
       ...(body ? { body: JSON.stringify(body), headers: { "content-type": "application/json" } } : {}),
     }, who.id);
+    if (path === "ask/stream" && response.ok) return new Response(response.body, { status: 200, headers: { "content-type": "application/x-ndjson", "cache-control": "no-store", "x-accel-buffering": "no" } });
     return new Response(await response.text(), { status: response.status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
   } catch { return Response.json({ error: "暂时无法连接工作区，请稍后重试。" }, { status: 502 }); }
 }

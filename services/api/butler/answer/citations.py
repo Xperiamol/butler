@@ -8,7 +8,7 @@ import re
 from ..models import Doc
 
 CITE = re.compile(r"\[([A-Za-z0-9_.:/\-]+)\]")
-NUMBER = re.compile(r"\d+(?:\.\d+)?")
+NUMBER = re.compile(r"(?<![A-Za-z])\d+(?:\.\d+)?")   # Q4、H2 这类带字母前缀的标识不是数值论断
 
 
 URL = re.compile(r"https?://[^\s)\]>\"']+", re.I)
@@ -32,7 +32,7 @@ def verify_citations(draft: str, context: list[Doc], urls: bool = True) -> tuple
         known = [i for i in ids if i in by_id]
         if known:
             support = " ".join(by_id[i].title + " " + by_id[i].text for i in known)
-            bare = CITE.sub("", line)
+            bare = re.sub(r"^\s*(?:[-*•]|#{1,4}|\d+[.)、])\s*", "", CITE.sub("", line))   # 行首的列表序号、标题符号不算论断里的数字
             for n in NUMBER.findall(bare):
                 if n not in support:
                     problems.append(f"unsupported-number:{n}")

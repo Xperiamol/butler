@@ -11,7 +11,7 @@ from ..models import Answer, Doc, Fact, Identity
 from ..retrieval.store import Store
 from ..security.injection import neutralize, scan
 from .citations import verify_citations
-from .remote import NO_INFO
+from .remote import FOLLOWUP, NO_INFO
 from .mosaic import GuardBudgetExceeded, Judge, check, premise_hits
 from .session import Session
 
@@ -75,9 +75,11 @@ def question_hash(question: str) -> str:
 def answer_question(identity: Identity, question: str, store: Store, all_facts: list[Fact],
                     judge: Judge, audit: AuditLog, guard: bool = True,
                     session: Optional[Session] = None, generate: Optional[Generator] = None,
-                    request_id: str = "", injection: bool = True, approved: frozenset = frozenset()) -> Answer:
+                    request_id: str = "", injection: bool = True, approved: frozenset = frozenset(),
+                    progress: Optional[Callable] = None) -> Answer:
     """approved：该用户已获预授权的受限结论编号。只对这些结论放行；其余照常拦截，拦截时给出“需要授权”而不是死拒答。"""
     t0 = time.perf_counter()
+    note = progress or (lambda stage, **data: None)   # 进度回调：只报阶段和资料标题，不报任何受限信息
     all_facts = [f for f in all_facts if f.id not in approved]
     generate = generate or default_generator()
     docs = store.search(identity, question)
@@ -86,6 +88,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
     context = history + [d for d in docs if d.id not in {h.id for h in history}]
     assert all(can_read(identity, d) for d in context)  # 不变量：生成器永远看不到无权文档
     context = fit_context(context, MAX_CONTEXT_CHARS)
+    note("retrieved", docs=[{"id": d.id, "title": d.title, "source": d.source} for d in context][:8])
     quarantined: list[str] = []
     if guard and injection:
         # 最后一道提示注入防线（入库时已扫过一次）：命中的资料不进生成上下文；其余资料拆掉定界符/角色伪装
@@ -97,7 +100,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
                 kept.append(replace(d, text=neutralize(d.text)))
         context = kept
 
-    status, hits, guard_ms, cited = "answered", [], 0.0, [d.id for d in context]
+    status, hits, guard_ms, cited, followups = "answered", [], 0.0, [d.id for d in context], []
     if not context and SMALL_TALK.match(question):
         text, cited = GREETING, []   # 纯寒暄：不检索、不调用模型
     elif not context:
@@ -106,12 +109,19 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
         # 结论的全部前提都将交到用户手里：不管模型怎么措辞，这一步都不放行，也不调用模型
         hits, text, status, cited = chain, NEEDS_APPROVAL, "needs_approval", []
     else:
+        note("generating")
         draft = generate(question, context)
+        note("checking")
         g0 = time.perf_counter()
         # 寒暄、含糊提问、资料里没有答案：模型用【无资料】开头、不带引用。仍然过结论检查，只是不要求引用。
         no_info = draft.lstrip().startswith(NO_INFO)
         if no_info:
             draft = draft.lstrip()[len(NO_INFO):].strip()
+        followups: list[str] = []
+        tail = re.search(rf"(?m)^\s*{FOLLOWUP}\s*(.+)$", draft)
+        if tail and not no_info:   # 追问建议单独拿出来，但和正文一起过结论检查：它也是发给提问者的内容
+            followups = [x.strip(" 　\t-•") for x in re.split(r"[|｜]", tail.group(1)) if x.strip(" 　\t-•")][:3]
+            draft = (draft[:tail.start()] + draft[tail.end():]).rstrip()
         text = draft
         if no_info:
             context, cited = [], []
@@ -127,8 +137,9 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
             if hasattr(judge, "bind"):
                 judge = judge.bind([d.text for d in context])   # 语义判官只看合成的新句子，不看资料原句
             try:
-                hits = check(identity, "\n".join(prior + [draft]), all_facts, judge)
+                hits = check(identity, "\n".join(prior + [draft] + followups), all_facts, judge)
                 if hits:
+                    followups = []
                     degraded = facts_only(context)
                     # 降级文本同样是“要发出的答案”，必须重新检查；仍触及则统一拒答
                     if check(identity, "\n".join(prior + [degraded]), all_facts, judge):
@@ -140,12 +151,14 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
                 text, status, cited, hits = SAFE_REFUSAL, "refused", [], []
         guard_ms = (time.perf_counter() - g0) * 1000
 
+    if status not in ("answered", "degraded"):
+        followups = []
     if session is not None:
-        session.remember(cited, text, {d.id: [list(x) for x in d.spans] for d in context if d.id in set(cited) and d.spans})
+        session.remember(cited, text + ("\n" + "\n".join(followups) if followups else ""), {d.id: [list(x) for x in d.spans] for d in context if d.id in set(cited) and d.spans})
     audit.append({"user": identity.id, "question_hash": question_hash(question), "guard": guard,
                   "docs": cited, "degraded": status == "degraded", "status": status, "request_id": request_id,
                   "quarantined": quarantined, "question_flagged": bool(guard and injection and scan(question).flagged),
                   "answer_digest": hashlib.sha256(text.encode()).hexdigest()[:16], "event": "ask",
                   "blocked_facts": [f.id for f in hits]})  # 只记 ID，不记内容
-    return Answer(text=text, citations=cited, sources=[d for d in context if d.id in set(cited)], degraded=status in ("degraded", "refused", "needs_approval"), status=status, blocked_facts=[f.id for f in hits],
+    return Answer(text=text, citations=cited, sources=[d for d in context if d.id in set(cited)], degraded=status in ("degraded", "refused", "needs_approval"), status=status, blocked_facts=[f.id for f in hits], followups=followups,
                   latency_ms=round((time.perf_counter() - t0) * 1000, 2), guard_ms=round(guard_ms, 2))

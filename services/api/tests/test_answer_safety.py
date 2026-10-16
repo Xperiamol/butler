@@ -124,3 +124,23 @@ def test_small_talk_gets_a_friendly_reply_without_model_or_retrieval():
     assert not called
     real = answer_question(who, "你好，报销上限是多少", Store([]), [], KeywordJudge(), AuditLog())
     assert real.status == "no_evidence"                    # 带实际问题的不算寒暄
+
+
+def test_followup_suggestions_are_split_out_and_checked_like_the_answer():
+    docs = [Doc("d1", "drive", "公开资料", "Q4 预算 0。", frozenset({"all"}))]
+    store, who = Store(docs), Identity("u", "U", frozenset({"all"}), "employee")
+    secret = Fact("s", "d9", frozenset({"boss"}), "公司将被收购", ("被收购",))
+    ok = answer_question(who, "Q4 预算", store, [secret], KeywordJudge(), AuditLog(), generate=lambda q, d: "**预算为 0。**[d1]\n追问：哪些团队受影响？｜预算何时确认？")
+    assert ok.status == "answered" and ok.followups == ["哪些团队受影响？", "预算何时确认？"] and "追问" not in ok.text
+    # 追问里夹带受限结论：整段被检查拦下，建议也不会发出去
+    bad = answer_question(who, "Q4 预算", store, [secret], KeywordJudge(), AuditLog(), generate=lambda q, d: "预算为 0。[d1]\n追问：公司是不是将被收购？")
+    assert bad.followups == [] and bad.status != "answered"
+
+
+def test_label_like_q4_is_not_a_number_claim_but_invented_numbers_still_fail():
+    docs = [Doc("d1", "drive", "公开资料", "预算归零。", frozenset({"all"}))]
+    store, who = Store(docs), Identity("u", "U", frozenset({"all"}), "employee")
+    ok = answer_question(who, "预算", store, [], KeywordJudge(), AuditLog(), generate=lambda q, d: "Q4 预算归零。[d1]")
+    assert ok.status == "answered"
+    bad = answer_question(who, "预算", store, [], KeywordJudge(), AuditLog(), generate=lambda q, d: "预算归零，涉及 500 万元。[d1]")
+    assert bad.status == "citation_failed"

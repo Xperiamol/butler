@@ -16,7 +16,8 @@ export type Side = {
 };
 export type Compare = { baseline: Side; butler: Side; data_source: string };
 export type AskStatus = "answered" | "degraded" | "needs_approval" | "refused" | "citation_failed" | "no_evidence";
-export type AskResult = { text: string; citations: Citation[]; latency_ms: number; data_source: string; status?: AskStatus; guard_ms?: number; approval_id?: string };
+export type AskResult = { text: string; citations: Citation[]; latency_ms: number; data_source: string; status?: AskStatus; guard_ms?: number; approval_id?: string; followups?: string[] };
+export type AskStage = { stage: "retrieved" | "generating" | "checking"; docs?: { id: string; title: string; source: string }[] };
 export type Approval = { id: string; user: string; fact_ids: string[]; conclusions: string[]; question_hash: string; status: "pending" | "approved" | "denied"; created: number; expires: number; decided_by: string | null; note: string };
 export type ApprovalState = { id: string; status: "pending" | "approved" | "denied" | "expired"; expires: number | null };
 export type Stats = { by_status: Record<string, number>; series: { t: number; asks: number; blocked: number }[]; approvals: { pending: number; approved: number; denied: number }; asks: number };
@@ -91,6 +92,27 @@ export const workspaceApi = {
   conversations: () => call<ConversationSummary[]>("/workspace/conversations"),
   conversation: (id: string) => call<{ id: string; turns: ChatTurn[]; stale: boolean }>(`/workspace/conversations/${id}`),
   ask: (question: string, session_id: string) => call<AskResult>("/workspace/ask", { method: "POST", body: JSON.stringify({ question, session_id }) }),
+  /** Same flow as ask(), but reports the stages as they happen (NDJSON); resolves with the final answer. */
+  askStream: async (question: string, session_id: string, onStage: (s: AskStage) => void): Promise<AskResult> => {
+    const r = await fetch("/api/workspace/ask/stream", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question, session_id }), cache: "no-store" });
+    if (!r.ok || !r.body) { const e = await r.json().catch(() => null); throw new Error(typeof e?.error === "string" ? e.error : typeof e?.detail === "string" ? e.detail : "这次没有拿到回答，请稍后再试。"); }
+    const reader = r.body.getReader(), decoder = new TextDecoder(); let buffer = "", answer: AskResult | null = null;
+    for (;;) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split("\n"); buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line);
+        if (event.event === "stage") onStage(event as AskStage);
+        else if (event.event === "done") answer = event.answer as AskResult;
+        else if (event.event === "error") throw new Error(event.message || "这次没有拿到回答。");
+      }
+      if (done) break;
+    }
+    if (!answer) throw new Error("这次没有拿到回答，请稍后再试。");
+    return answer;
+  },
   sources: () => call<{ visible: number; docs: Citation[] }>("/workspace/sources"),
   audit: () => call<{ entries: AuditRow[]; length: number }>("/workspace/audit"),
   verify: () => call<Verify>("/workspace/audit/verify"),
