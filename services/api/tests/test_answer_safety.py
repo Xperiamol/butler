@@ -98,3 +98,29 @@ def test_multi_turn_history_carries_only_cited_passages_and_context_has_a_budget
     assert seen and seen[0] < 2000     # 带回的是当时引用的段落，不是 ~9000 字的整篇
     ctx = [Doc(f"d{i}", "s", "t", "字" * 9000, frozenset({"staff"})) for i in range(8)]
     assert sum(len(d.text) for d in fit_context(ctx, MAX_CONTEXT_CHARS)) <= MAX_CONTEXT_CHARS + 8 * 400
+
+
+def test_no_info_reply_needs_no_citation_but_still_goes_through_the_judge():
+    from butler.answer.remote import NO_INFO
+    docs = [Doc("d1", "drive", "公开资料", "Q4 预算 0。", frozenset({"all"}))]
+    store, who, q = Store(docs), Identity("u", "U", frozenset({"all"}), "employee"), "Q4 预算"
+    hi = answer_question(who, q, store, [], KeywordJudge(), AuditLog(), generate=lambda _q, d: f"{NO_INFO}你好！请问想查什么？")
+    assert hi.status == "answered" and hi.citations == [] and hi.text == "你好！请问想查什么？"
+    # 没有这个标记、也没有引用的回答，照旧被当作无法核验
+    bare = answer_question(who, q, store, [], KeywordJudge(), AuditLog(), generate=lambda _q, d: "你好！")
+    assert bare.status == "citation_failed"
+    # 带标记也逃不过结论检查
+    secret = Fact("s", "d9", frozenset({"boss"}), "公司将被收购", ("被收购",))
+    leak = answer_question(who, q, store, [secret], KeywordJudge(), AuditLog(), generate=lambda _q, d: f"{NO_INFO}公司将被收购。")
+    assert leak.status != "answered" and "被收购" not in leak.text
+
+
+def test_small_talk_gets_a_friendly_reply_without_model_or_retrieval():
+    called = []
+    who = Identity("u", "U", frozenset({"staff"}), "employee")
+    for hello in ("你好", "谢谢！", "Hi"):
+        a = answer_question(who, hello, Store([]), [], KeywordJudge(), AuditLog(), generate=lambda q, d: called.append(q) or "不应被调用")
+        assert a.status == "answered" and a.citations == [] and "Butler" in a.text
+    assert not called
+    real = answer_question(who, "你好，报销上限是多少", Store([]), [], KeywordJudge(), AuditLog())
+    assert real.status == "no_evidence"                    # 带实际问题的不算寒暄

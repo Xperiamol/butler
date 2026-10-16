@@ -255,7 +255,7 @@ def model_plan(settings):
             raise HTTPException(503, "模型服务必须使用 HTTPS。")
     elif not (key_value and generation and base.startswith("https://")):
         return {}, KeywordJudge(), False
-    return {"generate": RemoteModel(base, key_value, generation, settings["max_tokens"])}, RemoteJudge(RemoteModel(base, key_value, judging, 4096)), True
+    return {"generate": RemoteModel(base, key_value, generation, settings["max_tokens"], chat=True)}, RemoteJudge(RemoteModel(base, key_value, judging, 4096)), True
 
 
 def revision(tx, who):

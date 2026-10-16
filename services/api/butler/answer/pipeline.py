@@ -1,5 +1,6 @@
 from __future__ import annotations
 import hashlib
+import re
 import time
 from dataclasses import replace
 from typing import Callable, Optional
@@ -10,12 +11,15 @@ from ..models import Answer, Doc, Fact, Identity
 from ..retrieval.store import Store
 from ..security.injection import neutralize, scan
 from .citations import verify_citations
+from .remote import NO_INFO
 from .mosaic import GuardBudgetExceeded, Judge, check, premise_hits
 from .session import Session
 
 DEGRADED_PREFIX = "以下只列出你有权查看的事实，不做进一步推断：\n"
 NO_EVIDENCE = "没有找到你有权查看的相关资料，所以不作回答。"
 UNVERIFIED = "生成的回答无法对应到你有权查看的资料，所以不作回答。"
+SMALL_TALK = re.compile(r"^\s*(你好|您好|嗨|哈喽|hi|hello|hey|在吗|谢谢|多谢|感谢|辛苦了|再见|拜拜)[\s!！。,.，~～？?]*$", re.I)
+GREETING = "你好，我是 Butler。可以直接问工作上的问题，比如“支付 API 限流是多少？”。我会按你的权限查资料，并告诉你答案出自哪份资料。"
 SAFE_REFUSAL = "这个问题的完整回答可能涉及你无权知道的结论，所以不作回答。"
 NEEDS_APPROVAL = ("这个问题的回答，加上之前已经给你的资料，会得出一项需要授权才能知道的结论，所以暂不放行。"
                   "如果工作确有需要，可以申请授权；批准后在有效期内可以继续提问。")
@@ -94,7 +98,9 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
         context = kept
 
     status, hits, guard_ms, cited = "answered", [], 0.0, [d.id for d in context]
-    if not context:
+    if not context and SMALL_TALK.match(question):
+        text, cited = GREETING, []   # 纯寒暄：不检索、不调用模型
+    elif not context:
         text, status, cited = NO_EVIDENCE, "no_evidence", []
     elif guard and (chain := premise_hits(identity, all_facts, {d.id for d in context} | set(session.doc_ids if session else []))):
         # 结论的全部前提都将交到用户手里：不管模型怎么措辞，这一步都不放行，也不调用模型
@@ -102,9 +108,15 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
     else:
         draft = generate(question, context)
         g0 = time.perf_counter()
+        # 寒暄、含糊提问、资料里没有答案：模型用【无资料】开头、不带引用。仍然过结论检查，只是不要求引用。
+        no_info = draft.lstrip().startswith(NO_INFO)
+        if no_info:
+            draft = draft.lstrip()[len(NO_INFO):].strip()
         text = draft
+        if no_info:
+            context, cited = [], []
         if guard:
-            valid, problems = verify_citations(draft, context, urls=injection)
+            valid, problems = ([], []) if no_info else verify_citations(draft, context, urls=injection)
             if problems:
                 text, status, cited = UNVERIFIED, "citation_failed", []
             else:
