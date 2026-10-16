@@ -220,3 +220,8 @@ html[data-seen] .preloader { display: none; }
 
 .model-chip { margin-left: 12px; padding: 3px 10px; border-radius: 99px; background: #e0ecd6; color: #3b6a35; font: 600 10px var(--mono); font-style: normal; animation: pop .4s var(--ease) both; } .model-chip.rules { background: #f4e6bb; color: #7a5b10; }
 .demo-note { font-size: 11px; color: #7b866e; max-width: 340px; text-align: right; line-height: 1.7; }
+
+/* Long conversations scroll inside the chat area instead of stretching the page. */
+.ask-workspace { grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+.chat-column, .knowledge-sidebar { min-height: 0; }
+.chat-content { overscroll-behavior: contain; scroll-behavior: smooth; }

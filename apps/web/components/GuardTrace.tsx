@@ -1,5 +1,7 @@
 import type { AskResult } from "@/lib/api";
 
+export const fmtMs = (ms: number) => ms < 1000 ? `${ms.toFixed(ms < 10 ? 1 : 0)} ms` : `${(ms / 1000).toFixed(1)} 秒`;
+
 const RESULT: Record<string, { text: string; tone: "ok" | "warn" | "stop" }> = {
   answered: { text: "未触及受限结论", tone: "ok" },
   degraded: { text: "去掉了越权推断", tone: "warn" },
@@ -20,6 +22,6 @@ export default function GuardTrace({ answer }: { answer: AskResult }) {
   ];
   return <ol className="guard-trace" aria-label="这次回答经过的检查">
     {steps.map((s, i) => <li key={s.name} className={`trace-${s.tone}`} style={{ "--i": i } as React.CSSProperties}><span className="trace-mark" aria-hidden="true">{s.tone === "ok" ? "✓" : s.tone === "warn" ? "!" : "×"}</span><span><b>{s.name}</b><small>{s.detail}</small></span></li>)}
-    {answer.guard_ms !== undefined && <li className="trace-time" style={{ "--i": 4 } as React.CSSProperties}>检查 {answer.guard_ms.toFixed(1)} ms</li>}
+    {answer.guard_ms !== undefined && <li className="trace-time" style={{ "--i": 4 } as React.CSSProperties}>检查 {fmtMs(answer.guard_ms)}</li>}
   </ol>;
 }
