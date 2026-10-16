@@ -44,9 +44,9 @@ def title(n, text):
     say(f"━━ 场景 {n}  {text} " + "━" * max(2, 52 - len(text)), B + C, 1.0)
 
 
-def show_answer(label, answer, leaked):
-    status = {"answered": "已回答", "refused": "拒答", "degraded": "降级", "no_evidence": "无资料", "citation_failed": "引用不成立"}.get(answer.status, answer.status)
-    flag = f"{R}✗ 泄露了结论{X}" if leaked else f"{G}✓ 没有泄露{X}"
+def show_answer(label, answer, leaked, authorized=False):
+    status = {"answered": "已回答", "refused": "拒答", "needs_approval": "需授权", "degraded": "降级", "no_evidence": "无资料", "citation_failed": "引用不成立"}.get(answer.status, answer.status)
+    flag = (f"{Y}● 结论已获批准，可知{X}" if authorized else f"{R}✗ 泄露了结论{X}") if leaked else f"{G}✓ 没有泄露{X}"
     lines = [l for l in answer.text.splitlines() if l.strip() and (l.startswith("- [f:c01") or not l.startswith("- ["))]
     say(f"   {B}{label}{X} [{status}] {flag}", pause=0.4)
     for l in lines[-2:]:
@@ -79,7 +79,17 @@ def scene1(args):
             texts.append(a.text)
             show_answer(f"A{i}", a, E.leaked("\n".join(texts), c))
         if guard:
-            say("   原因：该结论登记了依赖资料，他累计拿到的资料已经凑齐，第二问之后就不再放行。", Y, 1.0)
+            say("   原因：他累计拿到的资料已经凑齐这条结论的依据。不是拒绝了事，而是转成“需要授权”：", Y, 1.0)
+            say("   第一问照常放行；第二问起转成需要授权，要有人批准，申请里只有结论编号，申请人看不到是哪条结论。", Y, 1.0)
+            say("\n  ▶ 主管批准 30 分钟预授权（不能批自己的申请，审计里记着谁批的）", B, 0.8)
+            sess2, texts2 = Session("u"), []
+            for i, q in enumerate(c["questions"], 1):
+                say(f"   Q{i}  {q}", pause=0.4)
+                a = answer_question(E.USER, q, replace(store, quarantine=True), facts, judge, AuditLog(), guard=True,
+                                    session=sess2, generate=gen, injection=True, approved=frozenset(f.id for f in facts))
+                texts2.append(a.text)
+                show_answer(f"A{i}", a, E.leaked("\n".join(texts2), c), authorized=True)
+            say("   批准区间内放行；到期自动失效，其他人和其他结论不受影响。", Y, 1.0)
     say("\n  结论级防护管的是“拼出来的东西”，不只是“能不能读这一份”。", B, 1.5)
 
 

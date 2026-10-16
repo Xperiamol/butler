@@ -324,3 +324,41 @@ def test_git_sync_end_to_end_through_the_api_including_revocation(db, tmp_path, 
     assert client.get("/workspace/conversations/s1", headers=headers("alice")).json()["stale"] is True
     with db.transaction() as tx:
         assert any(e["payload"].get("event") == "sync.acl_changed" for e in tx.all("audit_entry"))
+
+
+def test_blocked_user_gets_approval_flow_with_expiry_and_separation_of_duty(db):
+    with db.transaction() as tx:   # 登记前提：Payments 预算 + 供应商合同暂停，合起来就能推出裁撤
+        f = tx.get("fact", "f-reorg")
+        tx.put("fact", "f-reorg", {**f, "premises": ["drive-budget-1", "jira-vendor-1"]})
+    q = "Payments 团队 Q4 预算为 0，供应商合同又暂停，这意味着什么？"
+    blocked = ask("ken", "a1", q).json()
+    assert blocked["status"] == "needs_approval" and blocked["citations"] == [] and "裁撤" not in blocked["text"]
+    aid = blocked["approval_id"]
+    assert ask("ken", "a2", q).json()["approval_id"] == aid                      # 同一组结论不重复申请
+    assert client.get("/workspace/approvals", headers=headers("ken")).status_code == 403
+    assert client.get(f"/workspace/approvals/{aid}", headers=headers("alice")).status_code == 404   # 别人看不到
+    assert client.get(f"/workspace/approvals/{aid}", headers=headers("ken")).json()["status"] == "pending"
+    listed = client.get("/workspace/approvals", headers=headers()).json()
+    assert listed[0]["id"] == aid and "ken" == listed[0]["user"] and listed[0]["conclusions"]
+    assert ask("ken", "a3", q).json()["status"] == "needs_approval"              # 批准前仍然拦
+    done = client.post(f"/workspace/approvals/{aid}/decide", headers=headers(), json={"approve": True, "minutes": 30})
+    assert done.status_code == 200 and done.json()["status"] == "approved"
+    assert client.post(f"/workspace/approvals/{aid}/decide", headers=headers(), json={"approve": False}).status_code == 409
+    allowed = ask("ken", "a4", q).json()
+    assert allowed["status"] != "needs_approval" and allowed["citations"]          # 预授权区间内放行
+    with db.transaction() as tx:                                                    # 到期自动失效
+        a = tx.get("approval", aid)
+        tx.put("approval", aid, {**a, "expires": 1.0})
+    assert ask("ken", "a5", q).json()["status"] == "needs_approval"
+    with db.transaction() as tx:
+        events = [e["payload"]["event"] for e in tx.all("audit_entry")]
+    assert "approval.requested" in events and "approval.decided" in events
+
+
+def test_requester_cannot_approve_own_request(db):
+    with db.transaction() as tx:
+        tx.put("approval", "own1", {"id": "own1", "user": "sara", "fact_ids": ["f-reorg"], "question_hash": "x", "status": "pending",
+                                    "created": 1.0, "expires": 0, "decided_by": None, "note": ""})
+    assert client.post("/workspace/approvals/own1/decide", headers=headers(), json={"approve": True}).status_code == 403
+    with db.transaction() as tx:
+        assert tx.get("approval", "own1")["status"] == "pending"

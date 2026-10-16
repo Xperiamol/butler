@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[4]
 EVAL = ROOT / "seed" / "eval"
 CORPUS = ROOT / ".corpus" / "handbook"
 SYSTEMS = ("none", "doc", "judge", "semantic", "butler", "butler_auto")
-BLOCKED = ("degraded", "refused", "citation_failed")
+BLOCKED = ("degraded", "needs_approval", "refused", "citation_failed")
 USER = Identity("user", "User", frozenset({"all"}), "contractor")
 EXEC = Identity("exec", "Exec", frozenset({"all", "exec"}), "exec")
 

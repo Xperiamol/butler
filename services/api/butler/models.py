@@ -38,7 +38,7 @@ class Answer:
     text: str
     citations: list[str] = field(default_factory=list)  # doc ids
     degraded: bool = False
-    status: str = "answered"  # answered | degraded | refused | citation_failed | no_evidence
+    status: str = "answered"  # answered | degraded | needs_approval | refused | citation_failed | no_evidence
     blocked_facts: list[str] = field(default_factory=list)  # 只给审计和演示对比用，不返回给提问者
     latency_ms: float = 0.0
     guard_ms: float = 0.0  # 结论检查额外耗时

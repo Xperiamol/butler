@@ -17,6 +17,8 @@ DEGRADED_PREFIX = "以下只列出你有权查看的事实，不做进一步推�
 NO_EVIDENCE = "没有找到你有权查看的相关资料，所以不作回答。"
 UNVERIFIED = "生成的回答无法对应到你有权查看的资料，所以不作回答。"
 SAFE_REFUSAL = "这个问题的完整回答可能涉及你无权知道的结论，所以不作回答。"
+NEEDS_APPROVAL = ("这个问题的回答，加上之前已经给你的资料，会得出一项需要授权才能知道的结论，所以暂不放行。"
+                  "如果工作确有需要，可以申请授权；批准后在有效期内可以继续提问。")
 
 Generator = Callable[[str, list], str]
 
@@ -69,8 +71,10 @@ def question_hash(question: str) -> str:
 def answer_question(identity: Identity, question: str, store: Store, all_facts: list[Fact],
                     judge: Judge, audit: AuditLog, guard: bool = True,
                     session: Optional[Session] = None, generate: Optional[Generator] = None,
-                    request_id: str = "", injection: bool = True) -> Answer:
+                    request_id: str = "", injection: bool = True, approved: frozenset = frozenset()) -> Answer:
+    """approved：该用户已获预授权的受限结论编号。只对这些结论放行；其余照常拦截，拦截时给出“需要授权”而不是死拒答。"""
     t0 = time.perf_counter()
+    all_facts = [f for f in all_facts if f.id not in approved]
     generate = generate or default_generator()
     docs = store.search(identity, question)
     # 会话里引用过的文档也进入上下文（多轮对话），但每轮都实时复核权限：撤权后旧对话也拿不到
@@ -94,7 +98,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
         text, status, cited = NO_EVIDENCE, "no_evidence", []
     elif guard and (chain := premise_hits(identity, all_facts, {d.id for d in context} | set(session.doc_ids if session else []))):
         # 结论的全部前提都将交到用户手里：不管模型怎么措辞，这一步都不放行，也不调用模型
-        hits, text, status, cited = chain, SAFE_REFUSAL, "refused", []
+        hits, text, status, cited = chain, NEEDS_APPROVAL, "needs_approval", []
     else:
         draft = generate(question, context)
         g0 = time.perf_counter()
@@ -116,7 +120,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
                     degraded = facts_only(context)
                     # 降级文本同样是“要发出的答案”，必须重新检查；仍触及则统一拒答
                     if check(identity, "\n".join(prior + [degraded]), all_facts, judge):
-                        text, status, cited = SAFE_REFUSAL, "refused", []
+                        text, status, cited = NEEDS_APPROVAL, "needs_approval", []
                     else:
                         text, status, cited = degraded, "degraded", [d.id for d in context]
             except GuardBudgetExceeded:
@@ -131,5 +135,5 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
                   "quarantined": quarantined, "question_flagged": bool(guard and injection and scan(question).flagged),
                   "answer_digest": hashlib.sha256(text.encode()).hexdigest()[:16], "event": "ask",
                   "blocked_facts": [f.id for f in hits]})  # 只记 ID，不记内容
-    return Answer(text=text, citations=cited, sources=[d for d in context if d.id in set(cited)], degraded=status in ("degraded", "refused"), status=status, blocked_facts=[f.id for f in hits],
+    return Answer(text=text, citations=cited, sources=[d for d in context if d.id in set(cited)], degraded=status in ("degraded", "refused", "needs_approval"), status=status, blocked_facts=[f.id for f in hits],
                   latency_ms=round((time.perf_counter() - t0) * 1000, 2), guard_ms=round(guard_ms, 2))

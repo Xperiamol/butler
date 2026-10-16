@@ -1,6 +1,6 @@
 """第一批 P0 回归：引用核验、降级复核、事实随版本失效、跨轮拼接评分。"""
 from butler.answer.mosaic import KeywordJudge
-from butler.answer.pipeline import NO_EVIDENCE, SAFE_REFUSAL, UNVERIFIED, answer_question
+from butler.answer.pipeline import NEEDS_APPROVAL, NO_EVIDENCE, UNVERIFIED, answer_question
 from butler.audit.chain import AuditLog
 from butler.models import Doc, Fact, Identity
 from butler.redteam.eval import run_eval
@@ -44,7 +44,7 @@ def test_degraded_text_is_rechecked_and_refused_when_still_leaking():
     # 授权资料自己就含有受限结论字样：降级文本也会触及，必须统一拒答而不是原样发出
     leaky = Doc("notice", "slack", "公告", "报销制度更新，公司计划裁撤支付组的报销流程。", frozenset({"staff"}))
     a = ask("公司计划裁撤支付组。[notice]", docs=(leaky,), question="报销制度更新")
-    assert a.status == "refused" and a.text == SAFE_REFUSAL and a.citations == []
+    assert a.status == "needs_approval" and a.text == NEEDS_APPROVAL and a.citations == []
     assert "裁撤" not in a.text
 
 

@@ -47,7 +47,7 @@ npm install && npm run dev      # http://localhost:3000（可用 BUTLER_API 指�
 
 可选的中文语义能力（语义判官、前提发现 v2、跨语言检索，约 570 MB 词向量）：`pip install -r requirements-semantic.txt`；缺失时自动退回关键词/词法路径。训练脚本需要 `requirements-train.txt`。
 
-真实模型评测：`export LLM_API_KEY=… LLM_BASE_URL=https://…/v1`，然后 `python -m butler.redteam.eval_llm --model <模型名> --split dev --limit 10`（调用按提示哈希缓存到 `.runtime/llm-cache/`，带独立 LLM 评分器、延迟与 token 统计；测试集同一模型只能跑一次）。演示：`python scripts/demo.py`（四个场景，适合录屏，脚本见 [演示视频脚本](docs/demo-video.md)）。
+架构定位与边界见 [架构页](docs/architecture-iam.md)；被拦回答的抽样复核见 [复核](docs/human-review.md)。真实模型评测：`export LLM_API_KEY=… LLM_BASE_URL=https://…/v1`，然后 `python -m butler.redteam.eval_llm --model <模型名> --split dev --limit 10`（调用按提示哈希缓存到 `.runtime/llm-cache/`，带独立 LLM 评分器、延迟与 token 统计；测试集同一模型只能跑一次）。演示：`python scripts/demo.py`（四个场景，适合录屏，脚本见 [演示视频脚本](docs/demo-video.md)）。
 
 评测：`python scripts/fetch_eval_handbook.py` 下载固定版本手册，然后 `python -m butler.redteam.eval_set --split dev`（测试集只能跑一次，见[独立评测](docs/independent-eval.md)）。同步 worker：`python -m butler.workers.run`。
 

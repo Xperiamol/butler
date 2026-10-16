@@ -585,6 +585,74 @@ def ask(body: AskBody, who=Depends(current)):
     return result
 
 
+APPROVAL_DEFAULT_MINUTES = 60
+
+
+def approved_facts(tx, user: str) -> frozenset:
+    """该用户当前有效的预授权：批准的受限结论编号，到期自动失效。"""
+    now = time.time()
+    return frozenset(f for a in tx.all("approval") if a["user"] == user and a["status"] == "approved" and a["expires"] > now for f in a["fact_ids"])
+
+
+def request_approval(tx, audit, who, fact_ids, question) -> str:
+    """被拦下时登记一条待批申请（同一用户、同一组结论的待批申请只保留一条）。申请里只存结论编号和问题哈希，不存问题原文。"""
+    ids = sorted(set(fact_ids))
+    for a in tx.all("approval"):
+        if a["user"] == who.id and a["status"] == "pending" and a["fact_ids"] == ids:
+            return a["id"]
+    approval_id = uuid.uuid4().hex[:12]
+    tx.put("approval", approval_id, {"id": approval_id, "user": who.id, "fact_ids": ids, "question_hash": question_hash(question),
+                                      "status": "pending", "created": time.time(), "expires": 0, "decided_by": None, "note": ""})
+    audit.append({"event": "approval.requested", "user": who.id, "approval_id": approval_id, "blocked_facts": ids})
+    return approval_id
+
+
+class DecideBody(StrictBody):
+    approve: bool
+    minutes: int = Field(default=APPROVAL_DEFAULT_MINUTES, ge=1, le=480)
+    note: str = Field(default="", max_length=200)
+
+
+@router.get("/approvals")
+def approvals(who=Depends(admin)):
+    """待批和已批申请。结论原文只给有权读它的审批人看；申请人不会看到被拦下的是哪条结论。"""
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+        statements = {f["id"]: f["statement"] for f in tx.all("fact") if can_read(who, Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"]))}
+        rows = sorted(tx.all("approval"), key=lambda a: -a["created"])
+        return [{**a, "conclusions": [statements.get(i, "（你无权查看该结论）") for i in a["fact_ids"]]} for a in rows]
+
+
+@router.get("/approvals/{approval_id}")
+def approval_status(approval_id: str, who=Depends(current)):
+    with database.transaction() as tx:
+        who = checked(tx, who)
+        a = tx.get("approval", approval_id)
+        if not a or (a["user"] != who.id and who.role not in ADMIN_ROLES):
+            raise HTTPException(404, "没有这条申请。")
+        state = "expired" if a["status"] == "approved" and a["expires"] <= time.time() else a["status"]
+        return {"id": a["id"], "status": state, "expires": a["expires"] or None}
+
+
+@router.post("/approvals/{approval_id}/decide")
+def approval_decide(approval_id: str, body: DecideBody, who=Depends(admin)):
+    with database.transaction() as tx:
+        who = checked(tx, who, ADMIN_ROLES)
+        a = tx.get("approval", approval_id)
+        if not a:
+            raise HTTPException(404, "没有这条申请。")
+        if a["status"] != "pending":
+            raise HTTPException(409, "这条申请已经处理过。")
+        if a["user"] == who.id:
+            raise HTTPException(403, "不能批准自己的申请。")
+        a.update(status="approved" if body.approve else "denied", decided_by=who.id, note=body.note,
+                 expires=time.time() + body.minutes * 60 if body.approve else 0)
+        tx.put("approval", approval_id, a)
+        PersistentAudit(tx).append({"event": "approval.decided", "user": who.id, "approval_id": approval_id, "requester": a["user"],
+                                    "approved": body.approve, "minutes": body.minutes if body.approve else 0, "blocked_facts": a["fact_ids"]})
+        return {"id": approval_id, "status": a["status"], "expires": a["expires"] or None}
+
+
 class BufferAudit:
     """模型调用期间不持有数据库锁：审计先缓存，提交时在事务里按序写入哈希链。"""
 
@@ -625,13 +693,14 @@ def _ask(body: AskBody, who):
             options["generate"] = RemoteModel(base, key_value, settings["generation_model"], settings["max_tokens"])
             judge = RemoteJudge(RemoteModel(base, key_value, settings["judge_model"], 4096))
         restricted = facts(tx)
+        approved = approved_facts(tx, who.id)
         store = build_store(tx, embedder_for(settings), INDEX_CACHE, session.doc_ids)
 
     # 2) 锁外：检索、生成、结论检查。慢模型不再阻塞其他用户的登录、问答和配置
     buffer, failure = BufferAudit(), None
     try:
         a = answer_question(who, body.question, store, restricted, judge, buffer,
-                            session=session, request_id=body.request_id, **options)
+                            session=session, request_id=body.request_id, approved=approved, **options)
     except ModelFailure as error:
         a, failure = None, str(error)
 
@@ -652,8 +721,10 @@ def _ask(body: AskBody, who):
             return {"__failure__": "资料、权限或会话在回答期间发生变化，请重试。"}
         for payload in buffer.payloads:
             audit.append(payload)
-        answer = {"text": a.text, "citations": cite(a.sources),
+        answer = {"text": a.text, "citations": cite(a.sources), "status": a.status,
                   "latency_ms": a.latency_ms, "data_source": "fake" if MODE == "demo" else "workspace"}
+        if a.status == "needs_approval":
+            answer["approval_id"] = request_approval(tx, audit, who, a.blocked_facts, body.question)
         tx.put("conversation", key, {"id": body.session_id, "owner": who.id,
                "title": body.question[:40] if not c else c["title"], "updated": time.time(), "revision": rev,
                "turns": (c["turns"] if c else []) + [{"question": body.question, "request_id": body.request_id, "answer": answer}],
