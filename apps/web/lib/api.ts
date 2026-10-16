@@ -15,7 +15,13 @@ export type Side = {
   guard_ms: number;
 };
 export type Compare = { baseline: Side; butler: Side; data_source: string };
-export type AskResult = { text: string; citations: Citation[]; latency_ms: number; data_source: string };
+export type AskStatus = "answered" | "degraded" | "needs_approval" | "refused" | "citation_failed" | "no_evidence";
+export type AskResult = { text: string; citations: Citation[]; latency_ms: number; data_source: string; status?: AskStatus; guard_ms?: number; approval_id?: string };
+export type Approval = { id: string; user: string; fact_ids: string[]; conclusions: string[]; question_hash: string; status: "pending" | "approved" | "denied"; created: number; expires: number; decided_by: string | null; note: string };
+export type ApprovalState = { id: string; status: "pending" | "approved" | "denied" | "expired"; expires: number | null };
+export type Stats = { by_status: Record<string, number>; series: { t: number; asks: number; blocked: number }[]; approvals: { pending: number; approved: number; denied: number }; asks: number };
+export type TamperResult = { index: number; relinked: boolean; chain_ok: boolean; first_bad_index: number | null; checkpoint_ok: boolean; checkpoint_bad_index: number | null; length: number; before: string; after: string };
+export type ScanResult = { flagged: boolean; score: number; rules: string[]; neutralized: boolean; preview: string };
 export type AuditRow = {
   index: number;
   prev_hash: string;
@@ -85,6 +91,12 @@ export const workspaceApi = {
   sources: () => call<{ visible: number; docs: Citation[] }>("/workspace/sources"),
   audit: () => call<{ entries: AuditRow[]; length: number }>("/workspace/audit"),
   verify: () => call<Verify>("/workspace/audit/verify"),
+  stats: () => call<Stats>("/workspace/stats"),
+  approvals: () => call<Approval[]>("/workspace/approvals"),
+  approval: (id: string) => call<ApprovalState>(`/workspace/approvals/${id}`),
+  decide: (id: string, data: { approve: boolean; minutes: number; note?: string }) => call<ApprovalState>(`/workspace/approvals/${id}/decide`, { method: "POST", body: JSON.stringify(data) }),
+  tamper: (index: number, relink: boolean) => call<TamperResult>("/workspace/lab/tamper", { method: "POST", body: JSON.stringify({ index, relink }) }),
+  scan: (text: string) => call<ScanResult>("/workspace/lab/scan", { method: "POST", body: JSON.stringify({ text }) }),
   cases: () => call<Cases>("/workspace/eval/cases"),
   eval: () => call<EvalReport>("/workspace/eval"),
 };

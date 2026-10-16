@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import StatsPanel from "./StatsPanel";
+import { CountUp, Reveal } from "./motion";
 import { workspaceApi as api, type WorkspaceSettings, type WorkspaceStatus, type Knowledge, type Member } from "@/lib/api";
 
 const message = (e: unknown) => e instanceof Error ? e.message : "操作未完成，请重试。";
@@ -22,9 +24,10 @@ export function WorkspaceOverview() {
   const { data: s, error, load } = useResource<WorkspaceStatus>(api.status);
   return <main className="admin-page"><div className="admin-heading"><div><span className="overline">工作区概览</span><h1>{s?.organization || "工作区"}</h1><p>资料、问答与管理，从这里开始。</p></div><Link className="btn primary" href="/workspace">开始提问 <span>↗</span></Link></div>
     {!s ? <ResourceState error={error} retry={load} /> : <>
-      <div className="workspace-metrics"><div><span>可用资料</span><strong>{s.visible_documents}<small>份</small></strong><Link href={s.can_admin ? "/workspace/knowledge" : "/workspace"}>查看知识范围 ↗</Link></div><div><span>我的会话</span><strong>{s.conversations}<small>个</small></strong><Link href="/workspace">继续会话 ↗</Link></div><div><span>{s.can_audit ? "审计记录" : "回答保护"}</span><strong>{s.can_audit ? s.audit_entries : "已启用"}{s.can_audit && <small>条</small>}</strong><span>{s.can_audit ? "包含问答和管理变更" : "按身份检索与检查"}</span></div></div>
+      <div className="workspace-metrics reveal-stagger"><div><span>可用资料</span><strong><CountUp value={s.visible_documents} /><small>份</small></strong><Link href={s.can_admin ? "/workspace/knowledge" : "/workspace"}>查看知识范围 ↗</Link></div><div><span>我的会话</span><strong><CountUp value={s.conversations} /><small>个</small></strong><Link href="/workspace">继续会话 ↗</Link></div><div><span>{s.can_audit ? "审计记录" : "回答保护"}</span><strong>{s.can_audit ? <CountUp value={s.audit_entries ?? 0} /> : "已启用"}{s.can_audit && <small>条</small>}</strong><span>{s.can_audit ? "包含问答和管理变更" : "按身份检索与检查"}</span></div></div>
+      {s.can_audit && <StatsPanel admin={s.can_admin} />}
       <section className="admin-section"><div className="section-title"><h2>{s.can_admin ? "工作区运行状态" : "工作区服务"}</h2><span className="quiet-tag">{s.mode === "enterprise" ? "企业环境" : "演示环境"}</span></div><div className="service-grid"><div><span className="service-icon">↪</span><h3>身份认证</h3><p>{s.auth_mode === "local" ? "账号密码" : "企业 SSO"}</p><span className="service-state ready">已登录</span></div><div><span className="service-icon">▤</span><h3>数据存储</h3><p>{s.database === "postgresql" ? "PostgreSQL" : "SQLite · 本地预览"}</p><span className="service-state ready">已连接</span></div><div><span className="service-icon">✳</span><h3>回答服务</h3><p>{s.mode === "demo" ? "规则演示" : s.model_ready ? "生成 + 安全检查" : "等待模型配置"}</p><span className={`service-state ${s.model_ready ? "ready" : "waiting"}`}>{s.mode === "demo" ? "可体验" : s.model_ready ? "已配置" : "待配置"}</span></div></div></section>
-      {s.can_admin && <section className="admin-section"><div className="section-title"><h2>管理工作区</h2></div><div className="admin-destinations"><Link href="/workspace/settings"><span>01</span><div><h3>配置中心</h3><p>组织名称、生成模型与检查模型</p></div><b>↗</b></Link><Link href="/workspace/knowledge"><span>02</span><div><h3>知识资料</h3><p>导入资料，设置来源权限</p></div><b>↗</b></Link><Link href="/workspace/members"><span>03</span><div><h3>成员与权限</h3><p>管理角色、权限组和账号状态</p></div><b>↗</b></Link></div></section>}
+      {s.can_admin && <section className="admin-section"><div className="section-title"><h2>管理工作区</h2></div><div className="admin-destinations"><Link href="/workspace/approvals"><span>00</span><div><h3>预授权审批</h3><p>处理被拦下的回答，限时放行</p></div><b>↗</b></Link><Link href="/workspace/settings"><span>01</span><div><h3>配置中心</h3><p>组织名称、生成模型与检查模型</p></div><b>↗</b></Link><Link href="/workspace/knowledge"><span>02</span><div><h3>知识资料</h3><p>导入资料，设置来源权限</p></div><b>↗</b></Link><Link href="/workspace/members"><span>03</span><div><h3>成员与权限</h3><p>管理角色、权限组和账号状态</p></div><b>↗</b></Link></div></section>}
     </>}
   </main>;
 }

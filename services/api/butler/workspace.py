@@ -181,8 +181,9 @@ def bootstrap(db):
                 tx.put("member", person["id"], {**person, "active": True})
             for doc in docs:
                 tx.put("document", doc.id, {**asdict(doc), "acl": sorted(doc.acl)})
+            registered = {"f-reorg": ["drive-budget-1", "jira-vendor-1"]}   # 演示：预算归零 + 合同暂停，凑齐就能推出裁撤
             for fact in restricted:
-                tx.put("fact", fact.id, {**asdict(fact), "acl": sorted(fact.acl), "keywords": list(fact.keywords)})
+                tx.put("fact", fact.id, {**asdict(fact), "acl": sorted(fact.acl), "keywords": list(fact.keywords), **({"premises": registered[fact.id]} if fact.id in registered else {})})
 
 
 bootstrap(database)
@@ -653,6 +654,75 @@ def approval_decide(approval_id: str, body: DecideBody, who=Depends(admin)):
         return {"id": approval_id, "status": a["status"], "expires": a["expires"] or None}
 
 
+class ScanBody(StrictBody):
+    text: str = Field(min_length=1, max_length=20000)
+
+
+@router.post("/lab/scan")
+def lab_scan(body: ScanBody, who=Depends(current)):
+    """演示台：把一段文字交给入库扫描器，看它会不会被当作提示注入隔离。不写入任何资料。"""
+    from .security.injection import neutralize, scan
+    verdict, cleaned = scan(body.text), neutralize(body.text)
+    return {"flagged": verdict.flagged, "score": verdict.score, "rules": list(verdict.rules),
+            "neutralized": cleaned != body.text, "preview": cleaned[:2000]}
+
+
+@router.get("/stats")
+def stats(who=Depends(auditor)):
+    """概览用的运行统计：回答状态分布、按小时的请求与拦截、审批队列。只统计审计链里已有的记录。"""
+    with database.transaction() as tx:
+        who = checked(tx, who, AUDIT_ROLES)
+        now = time.time()
+        by_status: dict[str, int] = {}
+        buckets = [{"t": now - (11 - i) * 3600, "asks": 0, "blocked": 0} for i in range(12)]
+        for _, row in tx.tail("audit_entry", 1000):
+            p = row["payload"]
+            if p.get("event") != "ask":
+                continue
+            by_status[p.get("status", "answered")] = by_status.get(p.get("status", "answered"), 0) + 1
+            age = int((now - p.get("ts", now)) // 3600)
+            if 0 <= age < 12:
+                b = buckets[11 - age]
+                b["asks"] += 1
+                b["blocked"] += p.get("status") in ("needs_approval", "degraded", "refused")
+        queue = {"pending": 0, "approved": 0, "denied": 0}
+        for a in tx.all("approval"):
+            queue[a["status"]] = queue.get(a["status"], 0) + 1
+        return {"by_status": by_status, "series": buckets, "approvals": queue, "asks": sum(by_status.values())}
+
+
+class TamperBody(StrictBody):
+    index: int = Field(ge=0)
+    relink: bool = False
+
+
+@router.post("/lab/tamper")
+def lab_tamper(body: TamperBody, who=Depends(auditor)):
+    """演示台：在内存里改一条审计记录，看校验怎么失败。不写库。relink=True 时把后面的哈希整条重算，模拟拿到数据库写权限的攻击者。"""
+    import copy
+    from .audit.chain import _h
+    with database.transaction() as tx:
+        who = checked(tx, who, AUDIT_ROLES)
+        if tx.count("audit_entry") > 5000:
+            raise HTTPException(413, "审计链过长，演示台只处理 5000 条以内。")
+        entries = copy.deepcopy(tx.all("audit_entry"))
+        head = tx.get("meta", "audit_head")["hash"]
+    if body.index >= len(entries):
+        raise HTTPException(404, "没有这条记录。")
+    before = entries[body.index]["hash"]
+    entries[body.index]["payload"]["user"] = "someone-else"
+    if body.relink:
+        prev = entries[body.index - 1]["hash"] if body.index else GENESIS
+        for e in entries[body.index:]:
+            e["prev_hash"] = prev
+            e["hash"] = prev = _h(e["prev_hash"], e["payload"])
+    chain_ok, bad = verify(entries)
+    sealed_ok, sealed_bad = verify(entries, head)
+    return {"index": body.index, "relinked": body.relink, "chain_ok": chain_ok, "first_bad_index": bad,
+            "checkpoint_ok": sealed_ok, "checkpoint_bad_index": sealed_bad, "length": len(entries),
+            "before": before[:12], "after": entries[body.index]["hash"][:12]}
+
+
 class BufferAudit:
     """模型调用期间不持有数据库锁：审计先缓存，提交时在事务里按序写入哈希链。"""
 
@@ -722,7 +792,7 @@ def _ask(body: AskBody, who):
         for payload in buffer.payloads:
             audit.append(payload)
         answer = {"text": a.text, "citations": cite(a.sources), "status": a.status,
-                  "latency_ms": a.latency_ms, "data_source": "fake" if MODE == "demo" else "workspace"}
+                  "latency_ms": a.latency_ms, "guard_ms": a.guard_ms, "data_source": "fake" if MODE == "demo" else "workspace"}
         if a.status == "needs_approval":
             answer["approval_id"] = request_approval(tx, audit, who, a.blocked_facts, body.question)
         tx.put("conversation", key, {"id": body.session_id, "owner": who.id,

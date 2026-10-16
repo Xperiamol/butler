@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { workspaceApi, type ChatTurn, type ConversationSummary, type Citation, type Identity } from "@/lib/api";
 import AnswerText from "./AnswerText";
+import ApprovalCard from "./ApprovalCard";
+import GuardTrace from "./GuardTrace";
 
-const QUESTIONS = ["昨天支付故障的根本原因是什么？", "支付 API 限流是多少？", "供应商 X 合同现在是什么状态？"];
+const QUESTIONS = ["昨天支付故障的根本原因是什么？", "支付 API 限流是多少？", "供应商 X 合同、Payments 团队 Q4 预算有什么关联？"];
 
 export default function AskPanel({ identity }: { identity: Identity }) {
   const [question, setQuestion] = useState("");
@@ -15,6 +17,7 @@ export default function AskPanel({ identity }: { identity: Identity }) {
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [fresh, setFresh] = useState(-1);
   const [sources, setSources] = useState<Citation[]>([]);
   const [sourcesError, setSourcesError] = useState(false);
   const session = useRef("");
@@ -36,12 +39,12 @@ export default function AskPanel({ identity }: { identity: Identity }) {
   const ask = async (q: string) => {
     if (!q.trim() || busy || loading) return;
     setBusy(true); setError("");
-    try { const answer = await workspaceApi.ask(q.trim(), session.current); setTurns((t) => [...t, { question: q.trim(), answer }]); setQuestion(""); setSelected(session.current); workspaceApi.conversations().then(setHistory).catch(() => {}); window.dispatchEvent(new Event("workspace-updated")); }
+    try { const answer = await workspaceApi.ask(q.trim(), session.current); setFresh(turns.length); setTurns((t) => [...t, { question: q.trim(), answer }]); setQuestion(""); setSelected(session.current); workspaceApi.conversations().then(setHistory).catch(() => {}); window.dispatchEvent(new Event("workspace-updated")); }
     catch (e) { setError(e instanceof Error ? e.message : "这次没有拿到回答，请稍后再试。"); }
     finally { setBusy(false); }
   };
   const reset = () => {
-    session.current = crypto.randomUUID(); setSelected(""); setTurns([]); setQuestion(""); setError("");
+    session.current = crypto.randomUUID(); setSelected(""); setTurns([]); setFresh(-1); setQuestion(""); setError("");
   };
   const open = async (id: string) => {
     setBusy(true); setError("");
@@ -54,7 +57,7 @@ export default function AskPanel({ identity }: { identity: Identity }) {
     <section className="chat-column"><div className="chat-toolbar"><span><i className="status-dot" />按 {identity.name.split("（")[0]} 的权限回答</span><div className="chat-toolbar-actions"><button className="btn sm mobile-context-button" aria-label="打开会话与资料" onClick={() => contextDialog.current?.showModal()}>会话 / 资料</button><button className="btn sm" disabled={busy || loading} onClick={reset}>＋ 新会话</button></div></div>
       <div className={`chat-content ${turns.length ? "has-turns" : ""}`}>
         {!turns.length && <div className="chat-welcome"><Image className="welcome-mark" src="/butler-avatar.png" width={88} height={88} alt="Butler 管家" /><span className="overline">知识问答</span><h1>今天想查什么？</h1><p>回答会附上你有权查看的来源。</p>{sources.some((s) => s.id === "slack-incident-1") && <div className="prompt-list">{QUESTIONS.map((q, i) => <button key={q} onClick={() => ask(q)} disabled={busy || loading}><span>0{i + 1}</span>{q}<span aria-hidden="true">↗</span></button>)}</div>}</div>}
-        {turns.map((t, i) => <article className="chat-turn" key={i}><div className="user-question"><span className="message-label">你</span><p>{t.question}</p></div><div className="assistant-answer"><span className="message-label">Butler</span><AnswerText text={t.answer.text} citations={t.answer.citations} /><span className="meta">{t.answer.latency_ms.toFixed(1)} ms</span></div></article>)}
+        {turns.map((t, i) => <article className="chat-turn" key={i}><div className="user-question"><span className="message-label">你</span><p>{t.question}</p></div><div className="assistant-answer"><span className="message-label">Butler</span>{t.answer.status === "needs_approval" ? <ApprovalCard answer={t.answer} busy={busy} onRetry={() => ask(t.question)} /> : <AnswerText text={t.answer.text} citations={t.answer.citations} typing={i === fresh} />}{t.answer.status && <GuardTrace answer={t.answer} />}<span className="meta">{t.answer.latency_ms.toFixed(1)} ms</span></div></article>)}
         {(busy || loading) && <p className="chat-pending" role="status"><span className="spinner" />{loading ? "正在恢复会话…" : "正在处理…"}</p>}<div ref={end} />
       </div>
       <div className="composer-area">{error && <p className="error" role="alert">{error}</p>}<form className="composer" onSubmit={(e) => { e.preventDefault(); ask(question); }}><label className="sr-only" htmlFor="question">输入问题</label><textarea id="question" value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="问一个工作上的问题…" rows={2} disabled={busy || loading} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); ask(question); } }} /><div><span>Enter 发送 · Shift + Enter 换行</span><button className="send-button" disabled={busy || loading || !question.trim()} aria-label="发送问题">↑</button></div></form><p className="composer-note">会话自动保存 · 来源按当前权限访问</p></div>
