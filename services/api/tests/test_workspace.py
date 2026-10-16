@@ -117,7 +117,7 @@ def test_enterprise_generation_and_checking_are_separate_and_fail_closed(db, mon
         if body["model"] == "generate":
             reply = f"支付组将被裁撤。[{content['documents'][0]['id']}]"
         else:
-            reply = "not json" if fail else json.dumps({f["id"]: f["id"] == "f-reorg" and "裁撤" in content["answer"] for f in content["restricted_facts"]})
+            reply = "not json" if fail else json.dumps({f["id"]: "裁撤" in f["statement"] and "裁撤" in content["answer"] for f in content["restricted_facts"]})
         return httpx.Response(200, json={"choices": [{"message": {"content": reply}}]}, request=httpx.Request("POST", url))
 
     monkeypatch.setattr(httpx, "post", complete)
@@ -125,7 +125,7 @@ def test_enterprise_generation_and_checking_are_separate_and_fail_closed(db, mon
     assert response.status_code == 200 and "裁撤" not in response.json()["text"]
     assert [name for name, _ in requests] == ["generate", "check", "check"]  # 降级文本再检查一次
     assert "drive-hr-1" not in {d["id"] for d in requests[0][1]["documents"]}
-    assert "f-reorg" in {f["id"] for f in requests[1][1]["restricted_facts"]}
+    assert any("裁撤" in f["statement"] for f in requests[1][1]["restricted_facts"])
     fail = True
     assert ask("ken", "failed", "Payments 团队 Q4 预算为 0，供应商合同又暂停，这意味着什么？").status_code == 503
     with db.transaction() as tx:

@@ -67,8 +67,8 @@ def test_judge_accepts_json_wrapped_in_fences_or_prose():
         def complete(self, *a): return self.v
 
     f = Fact("f1", "d", frozenset(), "restricted")
-    assert RemoteJudge(M('```json\n{"f1": true}\n```')).entails_many("a", [f]) == [f]
-    assert RemoteJudge(M('判定如下：{"f1": false}，以上。')).entails_many("a", [f]) == []
+    assert RemoteJudge(M('```json\n{"q1": true}\n```')).entails_many("a", [f]) == [f]
+    assert RemoteJudge(M('判定如下：{"q1": false}，以上。')).entails_many("a", [f]) == []
     assert parse_json_object('{"entails": true}') == {"entails": True}
     with pytest.raises(ValueError):
         parse_json_object("no json here")
@@ -83,3 +83,14 @@ def test_llm_env_prefers_generic_names_and_falls_back(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "new")
     monkeypatch.setenv("LLM_BASE_URL", "https://router.example/api/v1")
     assert llm_env() == ("new", "https://router.example/api/v1")
+
+
+def test_judge_hides_citation_tags_and_real_fact_ids():
+    seen = []
+
+    class M:
+        def complete(self, system, content):
+            seen.append(content)
+            return '{"q1": false}'
+    RemoteJudge(M()).entails_many("他调岗了 [f:c01:0]", [Fact("fact:c01", "d", frozenset(), "restricted")])
+    assert "f:c01" not in seen[0] and "fact:c01" not in seen[0] and "q1" in seen[0]
