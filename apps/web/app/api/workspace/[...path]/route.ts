@@ -11,7 +11,7 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
     method === "PUT" ? /^(settings|members\/[\w-]+(?:\/password)?|account\/password)$/ : /^(ask(?:\/stream)?|knowledge\/import|members|lab\/scan|lab\/tamper|lab\/compare|approvals\/[\w-]+\/decide)$/;
   if (!allowed.test(path)) return Response.json({ error: "接口不存在。" }, { status: 404 });
   if ((/^(settings|members|knowledge)/.test(path) || path === "approvals" || /^approvals\/[\w-]+\/decide$/.test(path)) && !["admin", "security"].includes(who.role)) return Response.json({ error: "需要管理员权限。" }, { status: 403 });
-  if ((/^(audit|eval|stats)/.test(path) || path === "lab/tamper") && !["admin", "security", "auditor"].includes(who.role)) return Response.json({ error: "需要审计权限。" }, { status: 403 });
+  if ((/^(audit|eval|stats)/.test(path) || path === "lab/tamper") && !["admin", "security", "auditor", "compliance"].includes(who.role)) return Response.json({ error: "需要审计权限。" }, { status: 403 });
   if (enterprise && path.startsWith("eval")) return Response.json({ error: "评测只在独立演示环境开放。" }, { status: 403 });
   if (method !== "GET") {
     const origin = request.headers.get("origin");

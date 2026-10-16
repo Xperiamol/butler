@@ -14,7 +14,7 @@ export default function WorkspaceShell({ identity, children }: { identity: Ident
   useEffect(() => { let active = true; const load = () => workspaceApi.status().then((s) => { if (active) { setStatus(s); setOffline(false); } }).catch(() => { if (active) setOffline(true); }); void load(); window.addEventListener("workspace-updated", load); return () => { active = false; window.removeEventListener("workspace-updated", load); }; }, [path]);
   const admin = ["admin", "security"].includes(identity.role);
   useEffect(() => { if (!admin) return; let live = true; const load = () => workspaceApi.approvals().then((r) => { if (live) setPending(r.filter((a) => a.status === "pending").length); }).catch(() => {}); void load(); const timer = setInterval(load, 5000); window.addEventListener("workspace-updated", load); return () => { live = false; clearInterval(timer); window.removeEventListener("workspace-updated", load); }; }, [admin]);
-  const audit = ["admin", "security", "auditor"].includes(identity.role);
+  const audit = ["admin", "security", "auditor", "compliance"].includes(identity.role);
   const groups = [{ title: "工作台", links: [{ href: "/workspace/overview", label: "概览", mark: "◫" }, { href: "/workspace", label: "知识问答", mark: "↗" }, ...(identity.username ? [{ href: "/workspace/account", label: "账号设置", mark: "♙" }] : [])] },
     ...(status?.mode === "demo" ? [{ title: "体验", links: [{ href: "/workspace/lab", label: "攻防演示台", mark: "✦" }] }] : []),
     ...(admin ? [{ title: "管理", links: [{ href: "/workspace/approvals", label: "预授权审批", mark: "✓", badge: pending }, { href: "/workspace/knowledge", label: "知识资料", mark: "▤" }, { href: "/workspace/members", label: "成员与权限", mark: "♧" }, { href: "/workspace/settings", label: "配置中心", mark: "⚙" }] }] : []),

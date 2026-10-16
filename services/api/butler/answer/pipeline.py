@@ -11,7 +11,9 @@ from ..models import Answer, Doc, Fact, Identity
 from ..retrieval.store import Store
 from ..security.injection import neutralize, scan
 from .citations import verify_citations
+from .messages import msg
 from .remote import FOLLOWUP, NO_INFO
+from ..retrieval.fanout import fan_out
 from .mosaic import GuardBudgetExceeded, Judge, check, premise_hits
 from .session import Session
 
@@ -64,8 +66,8 @@ def fit_context(context: list[Doc], limit: int) -> list[Doc]:
     return [d if len(d.text) <= share else replace(d, text=d.text[:share]) for d in context]
 
 
-def facts_only(docs: list[Doc]) -> str:
-    return DEGRADED_PREFIX + "\n".join(f"- [{d.id}] {d.text}" for d in docs)
+def facts_only(docs: list[Doc], question: str = "") -> str:
+    return msg("degraded_prefix", question) + "\n".join(f"- [{d.id}] {d.text}" for d in docs)
 
 
 def question_hash(question: str) -> str:
@@ -76,19 +78,47 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
                     judge: Judge, audit: AuditLog, guard: bool = True,
                     session: Optional[Session] = None, generate: Optional[Generator] = None,
                     request_id: str = "", injection: bool = True, approved: frozenset = frozenset(),
-                    progress: Optional[Callable] = None) -> Answer:
+                    progress: Optional[Callable] = None, planner: Optional[Callable] = None,
+                    recheck: Optional[Callable] = None, shadow: bool = False) -> Answer:
     """approved：该用户已获预授权的受限结论编号。只对这些结论放行；其余照常拦截，拦截时给出“需要授权”而不是死拒答。"""
     t0 = time.perf_counter()
     note = progress or (lambda stage, **data: None)   # 进度回调：只报阶段和资料标题，不报任何受限信息
     all_facts = [f for f in all_facts if f.id not in approved]
     generate = generate or default_generator()
-    docs = store.search(identity, question)
+    trace: dict = {}
+    denied: list[str] = []
+    if planner is not None and hasattr(store, "shadow_candidates"):
+        note("planning")
+        plan = planner(question)
+        note("planned", queries=plan.queries[1:], platforms=plan.platforms, source=getattr(plan, "source", "rules"))
+        docs, trace = fan_out(store, identity, question, plan)
+    else:
+        docs = store.search(identity, question)
+    retrieved_ids = [d.id for d in docs]
+    if shadow and hasattr(store, "shadow_candidates"):
+        # 只供审计：不看权限的影子查询，与提问者可读的集合做差，得到“被拒绝的候选”。结果不进上下文、不返回给提问者。
+        readable = store.readable_ids(identity)
+        denied = [i for i in store.shadow_candidates(question, 6) if i not in readable][:5]
     # 会话里引用过的文档也进入上下文（多轮对话），但每轮都实时复核权限：撤权后旧对话也拿不到
     history = [d for d in store.get_many(session.doc_ids if session else [], session.doc_spans if session else None) if can_read(identity, d)]
     context = history + [d for d in docs if d.id not in {h.id for h in history}]
     assert all(can_read(identity, d) for d in context)  # 不变量：生成器永远看不到无权文档
+    if recheck is not None:
+        # 第二道权限：入库快照可能滞后，对最终进入上下文的每一份文档按平台的原生语义实时复核；拿不到答案按拒绝处理
+        live_ok = []
+        for d in context:
+            try:
+                ok = recheck(identity, d)
+            except Exception:   # noqa: BLE001 — 平台权限接口失败 ⇒ 拒绝
+                ok = False
+            (live_ok if ok else denied).append(d if ok else d.id)
+        context = live_ok
     context = fit_context(context, MAX_CONTEXT_CHARS)
-    note("retrieved", docs=[{"id": d.id, "title": d.title, "source": d.source} for d in context][:8])
+    by_source: dict[str, int] = {}
+    for d in context:
+        by_source[d.source] = by_source.get(d.source, 0) + 1
+    trace = {**trace, "platforms": by_source or trace.get("platforms", {})}
+    note("retrieved", docs=[{"id": d.id, "title": d.title, "source": d.source} for d in context][:10], platforms=by_source)
     quarantined: list[str] = []
     if guard and injection:
         # 最后一道提示注入防线（入库时已扫过一次）：命中的资料不进生成上下文；其余资料拆掉定界符/角色伪装
@@ -102,12 +132,12 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
 
     status, hits, guard_ms, cited, followups = "answered", [], 0.0, [d.id for d in context], []
     if not context and SMALL_TALK.match(question):
-        text, cited = GREETING, []   # 纯寒暄：不检索、不调用模型
+        text, cited = msg("greeting", question), []   # 纯寒暄：不检索、不调用模型
     elif not context:
-        text, status, cited = NO_EVIDENCE, "no_evidence", []
+        text, status, cited = msg("no_evidence", question), "no_evidence", []   # 措辞与“资料不存在”完全一样，不透露存在性
     elif guard and (chain := premise_hits(identity, all_facts, {d.id for d in context} | set(session.doc_ids if session else []))):
         # 结论的全部前提都将交到用户手里：不管模型怎么措辞，这一步都不放行，也不调用模型
-        hits, text, status, cited = chain, NEEDS_APPROVAL, "needs_approval", []
+        hits, text, status, cited = chain, msg("needs_approval", question), "needs_approval", []
     else:
         note("generating")
         draft = generate(question, context)
@@ -128,7 +158,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
         if guard:
             valid, problems = ([], []) if no_info else verify_citations(draft, context, urls=injection)
             if problems:
-                text, status, cited = UNVERIFIED, "citation_failed", []
+                text, status, cited = msg("unverified", question), "citation_failed", []
             else:
                 cited = valid
         if guard and status == "answered":
@@ -140,15 +170,15 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
                 hits = check(identity, "\n".join(prior + [draft] + followups), all_facts, judge)
                 if hits:
                     followups = []
-                    degraded = facts_only(context)
+                    degraded = facts_only(context, question)
                     # 降级文本同样是“要发出的答案”，必须重新检查；仍触及则统一拒答
                     if check(identity, "\n".join(prior + [degraded]), all_facts, judge):
-                        text, status, cited = NEEDS_APPROVAL, "needs_approval", []
+                        text, status, cited = msg("needs_approval", question), "needs_approval", []
                     else:
                         text, status, cited = degraded, "degraded", [d.id for d in context]
             except GuardBudgetExceeded:
                 # 检查范围超出预算：不能当作“没问题”放行
-                text, status, cited, hits = SAFE_REFUSAL, "refused", [], []
+                text, status, cited, hits = msg("refused", question), "refused", [], []
         guard_ms = (time.perf_counter() - g0) * 1000
 
     if status not in ("answered", "degraded"):
@@ -159,6 +189,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
                   "docs": cited, "degraded": status == "degraded", "status": status, "request_id": request_id,
                   "quarantined": quarantined, "question_flagged": bool(guard and injection and scan(question).flagged),
                   "answer_digest": hashlib.sha256(text.encode()).hexdigest()[:16], "event": "ask",
+                  "retrieved": retrieved_ids, "denied": denied, "platforms": trace.get("platforms", {}),
                   "blocked_facts": [f.id for f in hits]})  # 只记 ID，不记内容
-    return Answer(text=text, citations=cited, sources=[d for d in context if d.id in set(cited)], degraded=status in ("degraded", "refused", "needs_approval"), status=status, blocked_facts=[f.id for f in hits], followups=followups,
+    return Answer(text=text, citations=cited, sources=[d for d in context if d.id in set(cited)], degraded=status in ("degraded", "refused", "needs_approval"), status=status, blocked_facts=[f.id for f in hits], followups=followups, trace=trace,
                   latency_ms=round((time.perf_counter() - t0) * 1000, 2), guard_ms=round(guard_ms, 2))

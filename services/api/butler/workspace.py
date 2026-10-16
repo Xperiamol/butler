@@ -26,6 +26,7 @@ from .audit.persistent import PersistentAudit
 from .knowledge import KnowledgeError, delete_document, refresh_auto_premises, text_hash as _text_hash, upsert_documents
 from .connectors.fake import load_world
 from .database import Database
+from . import company
 from .models import Doc, Fact, Identity
 from . import passwords
 from .ingest.embedding import EmbeddingFailure, HashingEmbedder, RemoteEmbedder
@@ -34,7 +35,8 @@ from .retrieval.hybrid import IndexCache, build_store
 from .retrieval.store import Store
 
 ADMIN_ROLES = {"admin", "security"}
-AUDIT_ROLES = ADMIN_ROLES | {"auditor"}
+AUDIT_ROLES = ADMIN_ROLES | {"auditor", "compliance"}
+FULL_AUDIT_ROLES = ADMIN_ROLES | {"compliance"}   # 合规官：能完整读审计（含被拒绝的候选），但没有管理权限；auditor 是范围受限的审计员
 MODE = os.getenv("BUTLER_MODE", "demo")
 if MODE not in {"demo", "enterprise"}:
     raise RuntimeError("BUTLER_MODE must be demo or enterprise")
@@ -66,7 +68,7 @@ class Settings(StrictBody):
 
 
 class MemberBody(StrictBody):
-    role: Literal["admin", "security", "auditor", "employee", "engineer", "contractor", "pm"]
+    role: Literal["admin", "security", "auditor", "compliance", "employee", "engineer", "contractor", "pm"]
     groups: list[str] = Field(max_length=50)
     active: bool = True
 
@@ -154,7 +156,11 @@ def text_hash(text: str) -> str:
 
 def facts(tx):
     # 事实绑定来源正文的版本：正文变了而事实没重新登记，旧事实不再参与检查也不再有效
-    current = {d["id"]: d.get("content_hash") or text_hash(d["text"]) for d in tx.all("document")}
+    from sqlalchemy import select
+    from . import database as D
+    current = {r.id: r.content_hash for r in tx.connection.execute(select(D.documents.c.id, D.documents.c.content_hash))}
+    for missing in [i for i, h in current.items() if not h]:
+        current[missing] = text_hash(tx.get("document", missing)["text"])
     return [Fact(f["id"], f["source_doc"], frozenset(f["acl"]), f["statement"], tuple(f.get("keywords", [])), tuple(f.get("premises") or f.get("auto_premises", [])), 0 if f.get("premises") else f.get("auto_quorum", 0)) for f in tx.all("fact")
             if f["source_doc"] in current and f.get("content_hash", current[f["source_doc"]]) == current[f["source_doc"]]]
 
@@ -208,6 +214,8 @@ def bootstrap(db):
 bootstrap(database)
 reindex()
 passwords.bootstrap(database)
+if company.enabled(MODE):
+    company.start(database, embedder_for)   # 四个模拟平台 + 后台同步线程（首次启动在后台全量灌入）
 
 
 def current(x_butler_identity: Optional[str] = Header(default=None)):
@@ -494,18 +502,44 @@ def member_put(key: str, body: MemberBody, who=Depends(admin)):
 
 @router.get("/sources")
 def sources(who=Depends(current)):
+    """提问者能访问的资料汇总：按平台、模态、容器（空间/项目/频道/共享盘）计数。资料很多时不列全表，只列最大的容器。"""
+    from sqlalchemy import select
+    from . import database as D
     with database.transaction() as tx:
         who = checked(tx, who)
-        visible = visible_docs(tx, who)
-        return {"visible": len(visible), "docs": cite(visible)}
+        now = time.time()
+        rows = tx.connection.execute(select(D.documents.c.id, D.documents.c.source, D.documents.c.title, D.documents.c.acl, D.documents.c.fresh_until,
+                                            D.documents.c.container, D.documents.c.modality)).all()
+        seen = [r for r in rows if (r.fresh_until is None or r.fresh_until >= now) and can_read(who, Doc(r.id, r.source, r.title, "", frozenset(r.acl or [])))]
+        by_source: dict[str, int] = {}
+        by_modality: dict[str, int] = {}
+        containers: dict[tuple[str, str], int] = {}
+        for r in seen:
+            by_source[r.source] = by_source.get(r.source, 0) + 1
+            by_modality[r.modality or "text"] = by_modality.get(r.modality or "text", 0) + 1
+            if r.container:
+                containers[(r.source, r.container)] = containers.get((r.source, r.container), 0) + 1
+        top = sorted(containers.items(), key=lambda kv: -kv[1])[:60]
+        return {"visible": len(seen), "by_source": by_source, "by_modality": by_modality,
+                "containers": [{"source": s_, "name": n, "count": c} for (s_, n), c in top],
+                "docs": [{"id": r.id, "source": r.source, "title": r.title} for r in seen] if len(seen) <= 80 else []}
 
 
 @router.get("/knowledge")
-def knowledge(who=Depends(admin)):
+def knowledge(q: str = "", source: str = "", limit: int = 200, who=Depends(admin)):
+    from sqlalchemy import select
+    from . import database as D
     with database.transaction() as tx:
         who = checked(tx, who, ADMIN_ROLES)
-        return {"documents": [{k: v for k, v in d.items() if k != "text"} for d in tx.all("document")],
-                "facts": len(tx.all("fact")), "revision": tx.get("meta", "revision")["value"]}
+        stmt = select(D.documents.c.id, D.documents.c.source, D.documents.c.title, D.documents.c.acl, D.documents.c.container, D.documents.c.modality)
+        if source:
+            stmt = stmt.where(D.documents.c.source == source)
+        if q.strip():
+            stmt = stmt.where(D.documents.c.title.ilike(f"%{q.strip()[:80]}%"))
+        total = tx.connection.execute(select(D.func.count()).select_from(stmt.subquery())).scalar_one() if hasattr(D, "func") else None
+        rows = tx.connection.execute(stmt.limit(max(1, min(limit, 500)))).all()
+        return {"documents": [{"id": r.id, "source": r.source, "title": r.title, "acl": r.acl or [], "container": r.container, "modality": r.modality} for r in rows],
+                "total": total if total is not None else len(rows), "facts": tx.count("fact"), "revision": tx.get("meta", "revision")["value"]}
 
 
 @router.post("/knowledge/import")
@@ -865,7 +899,8 @@ def _ask(body: AskBody, who, progress=None):
         turns_before = len(c["turns"]) if c else 0
         session = Session(who.id, list(c["doc_ids"]) if c else [], list(c["claims"]) if c else [], dict(c.get("doc_spans", {})) if c else {})
         settings = tx.get("settings", "main")
-        options, judge, _ = model_plan(settings)
+        options, judge, live = model_plan(settings)
+        options = {**options, **company.retrieval_options(settings, live, settings.get("generation_model") or os.getenv("BUTLER_LLM_MODEL", ""))}
         restricted = facts(tx)
         approved = approved_facts(tx, who.id)
         store = build_store(tx, embedder_for(settings), INDEX_CACHE, session.doc_ids)
@@ -895,7 +930,7 @@ def _ask(body: AskBody, who, progress=None):
             return {"__failure__": "资料、权限或会话在回答期间发生变化，请重试。"}
         for payload in buffer.payloads:
             audit.append(payload)
-        answer = {"text": a.text, "citations": cite(a.sources), "status": a.status, "followups": a.followups,
+        answer = {"text": a.text, "citations": company.cite_meta(tx, a.sources), "status": a.status, "followups": a.followups, "trace": a.trace,
                   "latency_ms": a.latency_ms, "guard_ms": a.guard_ms, "data_source": "fake" if MODE == "demo" else "workspace"}
         if a.status == "needs_approval":
             answer["approval_id"] = request_approval(tx, audit, who, a.blocked_facts, body.question)
@@ -912,7 +947,7 @@ def audit_list(who=Depends(auditor)):
         who = checked(tx, who, AUDIT_ROLES)
         visible = {d.id for d in visible_docs(tx, who)}
         readable_facts = {f.id for f in facts(tx) if can_read(who, f)}
-        full = who.role in ADMIN_ROLES
+        full = who.role in FULL_AUDIT_ROLES
         length = tx.count("audit_entry")
         tail = tx.tail("audit_entry", 200)  # 只取最后 200 条，不加载整条链
         PersistentAudit(tx).append({"event": "audit.viewed", "user": who.id})  # 看审计本身也要留痕
@@ -957,3 +992,6 @@ def audit_verify(who=Depends(auditor)):
         who = checked(tx, who, AUDIT_ROLES)
         ok, bad = verify(tx.iter("audit_entry"), tx.get("meta", "audit_head")["hash"])
         return {"ok": ok, "first_bad_index": bad, "length": tx.count("audit_entry")}
+
+
+from . import workspace_sim  # noqa: E402,F401  —— 安装模拟平台 / 媒体 / 审计查询的接口

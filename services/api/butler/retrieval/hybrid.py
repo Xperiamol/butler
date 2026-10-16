@@ -193,9 +193,53 @@ class HybridStore:
         return out
 
     # ---- 检索 ----
-    def search(self, identity: Identity, query: str, k: int = MAX_DOCS) -> list[Doc]:
+    def search(self, identity: Identity, query: str, k: int = MAX_DOCS, platforms: frozenset[str] | None = None) -> list[Doc]:
+        vis = {m["id"]: m for m in self.metas if self._readable(identity, m) and (platforms is None or m["source"] in platforms)}      # 先过滤
+        return self._rank(vis, query, k)
+
+    def shadow_candidates(self, query: str, k: int = 5) -> list[str]:
+        """【只供审计】不看权限地搜一遍，返回最相关的文档 id。调用方拿它和提问者可读的集合做差，得到“被拒绝的候选”写进审计。
+        结果绝不进入生成上下文，也不返回给提问者（否则就是存在性的旁路）。"""
+        every = {m["id"]: m for m in self.metas if m.get("fresh_until") is None or m["fresh_until"] >= self.as_of}
+        return [d.id for d in self._rank(every, query, k)]
+
+    def readable_ids(self, identity: Identity) -> set[str]:
+        return {m["id"] for m in self.metas if self._readable(identity, m)}
+
+    def meta_of(self, doc_id: str) -> dict | None:
+        if not hasattr(self, "_by_id"):
+            self._by_id = {m["id"]: m for m in self.metas}
+        return self._by_id.get(doc_id)
+
+    def backlinks(self, ids: list[str]) -> list[str]:
+        """引用了这些文档的其他文档（只返回 id，是否可读由调用方再过滤）。"""
+        if not hasattr(self, "_back"):
+            self._back: dict[str, list[str]] = {}
+            for m in self.metas:
+                for l in m.get("links") or ():
+                    self._back.setdefault(l, []).append(m["id"])
+        out: list[str] = []
+        for i in ids:
+            out += self._back.get(i, [])[:6]
+        return out
+
+    def passages(self, identity: Identity, ids: list[str], query: str, per_doc: int = 2) -> list[Doc]:
+        """按 id 取文档里与查询最相关的块（关联对象展开用）。只返回提问者可读的。"""
         by = {m["id"]: m for m in self.metas}
-        vis = {m["id"]: m for m in self.metas if self._readable(identity, m)}      # 先过滤
+        q = set(terms(_GLUE.sub(" ", query)))
+        out = []
+        for i in ids:
+            m = by.get(i)
+            if not m or not self._readable(identity, m) or i not in self.index.by_doc:
+                continue
+            idx = self.index.by_doc[i][1]
+            best = sorted(idx, key=lambda j: -sum(1 for t in q if t in self.index.chunks[j].terms))[:per_doc]
+            cs = sorted((self.index.chunks[j] for j in best), key=lambda c: c.start)
+            out.append(Doc(i, m["source"], m["title"], "\n…\n".join(c.text for c in cs), frozenset(m["acl"]), tuple((c.start, c.end) for c in cs), cs[0].heading))
+        return out
+
+    def _rank(self, vis: dict[str, dict], query: str, k: int) -> list[Doc]:
+        by = {m["id"]: m for m in self.metas}
         fresh = frozenset(d for d, m in vis.items() if self.index.has(d, m["content_hash"]))
         lag = [d for d in vis if d not in fresh]
         chunks, rows = self.index.chunks, self.index.view(fresh, self.quarantine).rows
@@ -305,9 +349,9 @@ class HybridStore:
 def build_store(tx, embedder: Embedder, cache: IndexCache, history_ids: list[str] = ()) -> HybridStore:
     """在读事务内取一份快照：元数据（不含正文）、块索引，以及滞后文档/会话历史需要的正文。"""
     metas = [{"id": r.id, "source": r.source, "title": r.title, "acl": r.acl or [], "content_hash": r.content_hash,
-              "fresh_until": r.fresh_until}
+              "fresh_until": r.fresh_until, "updated": r.updated, "links": r.links or []}
              for r in tx.connection.execute(select(D.documents.c.id, D.documents.c.source, D.documents.c.content_hash,
-                                                   D.documents.c.title, D.documents.c.acl, D.documents.c.fresh_until))]
+                                                   D.documents.c.title, D.documents.c.acl, D.documents.c.fresh_until, D.documents.c.updated, D.documents.c.links))]
     for m in metas:
         if not m["content_hash"]:  # 旧数据没有哈希：用正文现算
             m["content_hash"] = doc_hash(tx.get("document", m["id"]))

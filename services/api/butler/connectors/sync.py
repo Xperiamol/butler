@@ -5,7 +5,7 @@
 - 连接器只“读”，不做授权判断；平台主体到本地组的映射在 workers.sync 里完成，映射不出来就是无人可读
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 
@@ -24,6 +24,8 @@ class ExternalDoc:
     title: str
     text: str
     url: str
+    source: str = "upload"                       # 平台名（confluence / jira / slack / drive）；界面按它分组、显示图标
+    meta: dict = field(default_factory=dict)      # 容器、作者、更新时间、模态、媒体键、关联对象……
 
 
 class SyncConnector(Protocol):

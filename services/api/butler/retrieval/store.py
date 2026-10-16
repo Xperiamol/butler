@@ -22,13 +22,30 @@ _EN_STOP = {"the", "a", "an", "is", "are", "was", "were", "be", "to", "of", "and
 _TOKEN = re.compile(r"[a-z0-9]+|[\u4e00-\u9fff]+")
 
 
+def stem(w: str) -> str:
+    """很轻的英文词形归一：migrate / migrates / migrated / migrating / migration 都落到同一个词干。
+    只处理词形，不做同义词；数字和带数字的标识（v2.14、inc-2291）原样保留。"""
+    if len(w) < 4 or any(c.isdigit() for c in w):
+        return w
+    for suf, rep in (("ations", "at"), ("ation", "at"), ("ies", "y"), ("sses", "ss")):
+        if w.endswith(suf):
+            return w[: -len(suf)] + rep
+    for suf in ("ingly", "ing", "edly", "ed", "ers", "er", "ly", "es", "s"):
+        if w.endswith(suf) and len(w) - len(suf) >= (3 if suf == "s" else 4) and not (suf == "s" and w.endswith("ss")):
+            w = w[: -len(suf)]
+            break
+    if w.endswith("e") and len(w) > 4:
+        w = w[:-1]
+    return w
+
+
 def terms(s: str) -> list[str]:
-    """中文用字符二元组；英文/数字按词（去常见虚词），中英混合的问题两边都能命中。保留重复，供 BM25 用。"""
+    """中文用字符二元组；英文/数字按词（去常见虚词、词形归一），中英混合的问题两边都能命中。保留重复，供 BM25 用。"""
     out: list[str] = []
     for tok in _TOKEN.findall(s.lower()):
         if tok[0] < "\u4e00":
             if len(tok) > 1 and tok not in _EN_STOP:
-                out.append(tok)
+                out.append(stem(tok))
         else:
             out += [tok[i:i + 2] for i in range(len(tok) - 1) if not (tok[i] in _STOP and tok[i + 1] in _STOP)]
     return out
