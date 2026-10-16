@@ -51,7 +51,7 @@ export function CountUp({ value, decimals = 0, duration = 1100, suffix = "" }: {
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [seen, value, duration, reduced]);
-  return <span ref={ref}>{shown.toFixed(decimals)}{suffix}</span>;
+  return <span ref={ref}>{shown.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}</span>;
 }
 
 /** Hand-drawn line chart: draws itself once visible. */

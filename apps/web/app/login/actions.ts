@@ -39,3 +39,21 @@ export async function logout() {
   await clearSession();
   redirect("/login");
 }
+
+/** Demo only: switch to another demo account without going through the login page (used by the console, the scenario runner and the sidebar). */
+export async function switchIdentity(form: FormData) {
+  if (enterprise) redirect("/login");
+  const id = String(form.get("identity") ?? ""), next = String(form.get("next") ?? "/workspace");
+  const safe = /^\/workspace[\w/-]*(\?q=[\w%.~+*'()!-]*)?$/.test(next) ? next : "/workspace";
+  try {
+    const [health, people] = await Promise.all([backend("/health"), backend("/identities")]);
+    if (!health.ok || !people.ok || (await health.json()).data_source !== "fake") redirect("/login");
+    const identities: Identity[] = await people.json();
+    const identity = identities.find((i) => i.id === id);
+    if (!identity) redirect("/login");
+    const current = await backend("/workspace/me", undefined, identity.id);
+    if (!current.ok) redirect("/login");
+    await createSession(await current.json() as Identity);
+  } catch (error) { if (error && typeof error === "object" && "digest" in error) throw error; redirect("/login"); }
+  redirect(safe);
+}

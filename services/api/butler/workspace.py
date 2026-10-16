@@ -748,15 +748,15 @@ def stats(who=Depends(auditor)):
         who = checked(tx, who, AUDIT_ROLES)
         now = time.time()
         by_status: dict[str, int] = {}
-        buckets = [{"t": now - (11 - i) * 3600, "asks": 0, "blocked": 0} for i in range(12)]
-        for _, row in tx.tail("audit_entry", 1000):
+        buckets = [{"t": now - (13 - i) * 86400, "asks": 0, "blocked": 0} for i in range(14)]
+        for _, row in tx.tail("audit_entry", 4000):
             p = row["payload"]
             if p.get("event") != "ask":
                 continue
             by_status[p.get("status", "answered")] = by_status.get(p.get("status", "answered"), 0) + 1
-            age = int((now - p.get("ts", now)) // 3600)
-            if 0 <= age < 12:
-                b = buckets[11 - age]
+            age = int((now - p.get("ts", now)) // 86400)
+            if 0 <= age < 14:
+                b = buckets[13 - age]
                 b["asks"] += 1
                 b["blocked"] += p.get("status") in ("needs_approval", "degraded", "refused")
         queue = {"pending": 0, "approved": 0, "denied": 0}

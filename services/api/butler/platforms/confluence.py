@@ -46,6 +46,7 @@ class ConfluenceServer:
         self.pages: dict[str, Page] = {}
         self.log = ChangeLog()
         self.throttle = Throttle(throttle_every)
+        self.baseline: dict[str, str] = {}      # 页面第一次被改动前的正文：演示里“还原”用
 
     # ---- 数据 ----
     def add_space(self, s: Space) -> None:
@@ -114,6 +115,7 @@ class ConfluenceServer:
     # ---- 演示用的变更（来源平台上的真实操作）----
     def update_page(self, page_id: str, *, append: str = "", replace: str | None = None, now: float) -> Page:
         p = self.get(page_id)
+        self.baseline.setdefault(page_id, p.body)
         p.body = replace if replace is not None else (p.body.rstrip() + "\n\n" + append if append else p.body)
         p.version += 1
         p.updated = now
@@ -134,3 +136,10 @@ class ConfluenceServer:
         for q in self.pages.values():
             if q.space == key:
                 self.log.bump(q.id, ts=now)
+
+    def restore_page(self, page_id: str, now: float) -> Page:
+        p = self.get(page_id)
+        if page_id in self.baseline:
+            p.body, p.version, p.updated = self.baseline[page_id], p.version + 1, now
+            self.log.bump(page_id, ts=now)
+        return p

@@ -34,6 +34,7 @@ export default function Home() {
         <p>真实模型 gpt-5.4-mini · 33 条留出测试链。评分器与判官是同一个模型，样本由模型标注，结论仅供参考，详见评测文档。</p>
       </Reveal>
       <div className="marquee" aria-hidden="true"><div className="marquee-track">{[...SOURCES, ...SOURCES, ...SOURCES, ...SOURCES].map((s, i) => <span key={i}>{s}<i /></span>)}</div></div>
+      <Reveal className="scale-strip"><span>模拟的 Company A，体量</span>{[["52", "个 Confluence 空间", "1,300+ 页"], ["33", "个 Jira 项目", "1,590+ 个问题"], ["220", "个 Slack 频道", "2,450+ 个线程"], ["12", "个 Drive 共享盘", "1,090+ 个文件"], ["118", "份多模态资料", "图片 · 扫描件 · 录音"]].map(([n, a, b]) => <div key={a}><strong>{n}</strong><span>{a}</span><small>{b}</small></div>)}<p>合成数据，按赛题描述的体量缩放；每个平台的权限语义各自实现，不拍平。</p></Reveal>
       <section className="how" id="how">
         <Reveal className="how-head"><span className="demo-label">00 / 原理</span><h2>回答发出前，要过五道关。</h2><p>权限回答的是“能不能读这一份”。Butler 多问一句：你累计拿到的这些，拼起来是不是你不该知道的。</p></Reveal>
         <div className="how-grid">{LAYERS.map((l, i) => <Reveal key={l.n} delay={i * 90} className="how-card"><div data-tilt><span>{l.n}</span><h3>{l.title}</h3><p>{l.text}</p><i aria-hidden="true" /></div></Reveal>)}</div>

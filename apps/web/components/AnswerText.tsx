@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
+import CitationCards from "./CitationCards";
 import SourceChip from "./SourceChip";
 import type { Citation } from "@/lib/api";
 
@@ -51,6 +52,6 @@ export default function AnswerText({ text, citations, highlight = false, typing 
       : b.kind === "ul" ? <ul key={i}>{b.lines.map((l, k) => <li key={k}>{inline(l, index, `u${i}${k}`)}</li>)}</ul>
       : b.kind === "todo" ? <p key={i} className="answer-todo">{inline(b.lines[0], index, `t${i}`)}</p>
       : <p key={i} className={highlight && b.lines[0].startsWith("综合判断") ? "inference-line" : undefined}>{inline(b.lines.join(" "), index, `p${i}`)}</p>)}
-    {citations.length > 0 && done && <div className="cites cites-in">{citations.map((c, i) => <SourceChip key={c.id} c={c} n={i + 1} />)}</div>}
+    {citations.length > 0 && done && (citations.some((c) => c.container || c.modality) ? <div className="cites-in"><CitationCards citations={citations} /></div> : <div className="cites cites-in">{citations.map((c, i) => <SourceChip key={c.id} c={c} n={i + 1} />)}</div>)}
   </div>;
 }

@@ -158,3 +158,16 @@ def test_media_is_served_only_to_people_who_can_read_the_document(world):
     forensics = "drive:fH-FORENSICS"
     assert client.get(f"/workspace/media/{forensics}", headers={"x-butler-identity": "sara"}).status_code == 200
     assert client.get(f"/workspace/media/{forensics}", headers={"x-butler-identity": "pete"}).status_code == 404
+
+
+def test_scenario_runner_executes_and_asserts_the_official_cases(world):
+    import json
+    listed = client.get("/workspace/scenarios", headers={"x-butler-identity": "sara"}).json()
+    assert [s["id"] for s in listed][:5] == ["s1", "s2", "s3", "s4", "s5"]
+    for sid in ("s3", "s5"):                      # 规则模式下也应全部通过（不依赖真实模型的措辞）
+        r = client.post(f"/workspace/scenarios/{sid}/run", headers={"x-butler-identity": "sara"})
+        events = [json.loads(l) for l in r.text.splitlines() if l.strip()]
+        results = [e for e in events if e["event"] == "result"]
+        failed = [(e["i"], [c["label"] for c in e["checks"] if not c["ok"]]) for e in results if e["status"] != "pass"]
+        assert events[-1]["event"] == "done" and not failed, (sid, failed)
+    assert client.post("/workspace/scenarios/s3/run", headers={"x-butler-identity": "ken"}).status_code == 403   # 会改来源平台：只有管理员

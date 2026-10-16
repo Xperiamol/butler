@@ -374,7 +374,7 @@ def test_lab_scan_and_stats(db):
     ask("ken", "s1")
     assert client.get("/workspace/stats", headers=headers("ken")).status_code == 403
     s = client.get("/workspace/stats", headers=headers()).json()
-    assert s["asks"] >= 1 and len(s["series"]) == 12 and set(s["approvals"]) >= {"pending", "approved", "denied"}
+    assert s["asks"] >= 1 and len(s["series"]) == 14 and set(s["approvals"]) >= {"pending", "approved", "denied"}
 
 
 def test_lab_tamper_edit_breaks_chain_and_relink_breaks_checkpoint(db):

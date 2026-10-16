@@ -22,7 +22,7 @@ export default function StatsPanel({ admin }: { admin: boolean }) {
         <div><span>待审批</span><strong><CountUp value={stats.approvals.pending} /></strong>{admin && <Link href="/workspace/approvals">去处理 ↗</Link>}</div>
         <div><span>已批准</span><strong><CountUp value={stats.approvals.approved} /></strong></div>
       </div>
-      <div className="stat-chart"><span>近 12 小时</span><Sparkline data={stats.series.map((b) => b.asks)} label="近 12 小时问答量" /><Sparkline data={stats.series.map((b) => b.blocked)} label="近 12 小时拦截量" height={44} /><small><i className="legend-a" />问答 <i className="legend-b" />拦截</small></div>
+      <div className="stat-chart"><span>近 14 天</span><Sparkline data={stats.series.map((b) => b.asks)} label="近 14 天问答量" /><Sparkline data={stats.series.map((b) => b.blocked)} label="近 14 天拦截量" height={44} /><small><i className="legend-a" />问答 <i className="legend-b" />拦截</small></div>
       <div className="stat-bars">{rows.length ? rows.map(([key, n]) => <div key={key} className={`stat-bar tone-${TONE[key] ?? "muted"}`}><span>{LABEL[key] ?? key}</span><div><i style={{ transform: `scaleX(${n / max})` }} /></div><b>{n}</b></div>) : <p>还没有问答记录。去知识问答里提一个问题。</p>}</div>
     </div>
   </Reveal>;

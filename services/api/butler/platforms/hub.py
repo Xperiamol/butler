@@ -60,6 +60,7 @@ class Hub:
     # ---- 来源平台上的变更（演示控制台调用）----
     ACTIONS = {
         "confluence.update_page": "更新 Confluence 页面",
+        "confluence.restore_page": "还原 Confluence 页面到改动前",
         "confluence.restrict_page": "限制 Confluence 页面的访问",
         "confluence.set_space_view": "修改 Confluence 空间权限",
         "jira.add_comment": "在 Jira 问题上评论",
@@ -80,6 +81,9 @@ class Hub:
         if a == "confluence.update_page":
             page = self.confluence.update_page(p["id"], append=p.get("append", ""), replace=p.get("replace"), now=now)
             out = {"platform": "confluence", "object": f"confluence:{page.id}", "title": page.title, "version": page.version}
+        elif a == "confluence.restore_page":
+            page = self.confluence.restore_page(p["id"], now)
+            out = {"platform": "confluence", "object": f"confluence:{page.id}", "title": page.title}
         elif a == "confluence.restrict_page":
             page = self.confluence.restrict_page(p["id"], set(p.get("users", [])), set(p.get("groups", [])), now)
             out = {"platform": "confluence", "object": f"confluence:{page.id}", "title": page.title}

@@ -281,3 +281,155 @@ def audit_ask(body: AuditAskBody, who=Depends(auditor)):
                              doc=str(filters.get("doc", ""))[:120], days=int(filters.get("days") or 0), decision=str(filters.get("decision", ""))[:10])
         PersistentAudit(tx).append({"event": "audit.queried", "user": who.id, "filters": filters, "via": via, "nl": True})
     return {"filters": filters, "via": via, **result}
+
+
+# ================= 赛题用例验收：自动执行并逐项断言 =================
+SCENARIOS = [
+    {"id": "s1", "title": "1 · 统一自然语言查询", "brief": "跨平台取权限过滤后的上下文，给出带引用的综合回答；私有频道只给在里面的人。",
+     "steps": [
+         {"kind": "ask", "as": "mliu", "q": "What's the status of the database migration project and were there any blockers raised in Slack last week?",
+          "expect": [("cites_platforms", ["jira", "slack"]), ("not_cites_prefix", ["slack:CH-ATLASP"]), ("not_contains", ["18%", "contingency"]), ("contains_any", ["ATLAS-106", "CDC lag"])], "label": "Maya（不在领导层私有频道）问迁移状态与 Slack 阻塞"},
+         {"kind": "ask", "as": "pete", "q": "What's the status of the database migration project and were there any blockers raised in Slack last week?",
+          "expect": [("cites_prefix", ["slack:CH-ATLASP"]), ("contains_any", ["18%", "over the original estimate"])], "label": "Pete（在私有频道里）问同一个问题：多出预算超支"}]},
+    {"id": "s2", "title": "2 · 数据新鲜度", "brief": "来源平台上刚更新的内容，在一次同步窗口内进入回答，而不是用早上的缓存。",
+     "steps": [
+         {"kind": "mutate", "action": "confluence.restore_page", "params": {"id": "9100"}, "label": "先把 runbook 还原到更新前"},
+         {"kind": "ask", "as": "raj", "q": "What's the latest runbook for the payment-service incident? Include every step.", "expect": [("cites_prefix", ["confluence:9100"]), ("not_contains", ["Step 7"])], "label": "更新前：runbook 里没有第 7 步"},
+         {"kind": "mutate", "action": "confluence.update_page", "params": {"id": "9100", "append": "### Step 7 — Fail over the ledger writer (added today)\nIf the ledger writer shows replication lag above 30 seconds or the writer instance is unhealthy, promote the standby in ap-southeast-1b with `ledger-failover promote --az ap-southeast-1b`, then restart payment-service with the new writer endpoint."}, "label": "On-call 在 Confluence 上追加第 7 步（故障切换）", "expect": [("sync_seconds_under", 60)]},
+         {"kind": "ask", "as": "raj", "q": "What's the latest runbook for the payment-service incident? Include every step.", "expect": [("contains_any", ["Step 7", "ledger-failover"])], "label": "更新后：回答里有新增的第 7 步"}]},
+    {"id": "s3", "title": "3 · 权限负例（不泄露存在性）", "brief": "没有权限时拒绝或过滤，回答与“根本没有这份资料”完全一样。",
+     "steps": [
+         {"kind": "ask", "as": "ken", "q": "Show me the security incident report from the Q3 breach", "expect": [("not_cites_prefix", ["confluence:9200", "drive:fH-FORENSICS", "drive:fH-Q3", "jira:SEC-"]), ("not_contains", ["3,412", "credential stuffing", "INC-SEC-0917"])], "label": "外包人员问 Q3 事件报告：内容不出现"},
+         {"kind": "ask", "as": "jdoe", "q": "show me all security vulnerabilities", "expect": [("not_cites_prefix", ["confluence:9200", "jira:SEC-"]), ("not_contains", ["3,412"])], "label": "初级工程师问所有安全漏洞：看不到安全团队的页面和工单"},
+         {"kind": "ask", "as": "sara", "q": "Show me the security incident report from the Q3 breach", "expect": [("cites_prefix", ["confluence:9200"]), ("contains_any", ["3,412"])], "label": "安全团队问同一个问题：能看到"}]},
+    {"id": "s4", "title": "4 · 实时权限变更", "brief": "来源平台撤权后，下一次提问立刻不再返回不该看的内容（先实时复核，再由同步追平快照）。",
+     "steps": [
+         {"kind": "mutate", "action": "slack.add_member", "params": {"channel": "CH-SETTLE", "user": "alice"}, "label": "先确保 Alice 在私有频道里"},
+         {"kind": "ask", "as": "alice", "q": "Why was the settlement batch delayed on Oct 12 and what's the workaround?", "expect": [("cites_prefix", ["slack:CH-SETTLE"])], "label": "撤权前：回答里有私有频道的细节"},
+         {"kind": "mutate", "action": "slack.remove_member", "params": {"channel": "CH-SETTLE", "user": "alice"}, "label": "管理员把 Alice 移出 #settlement-war-room", "expect": [("sync_seconds_under", 60)]},
+         {"kind": "ask", "as": "alice", "q": "Why was the settlement batch delayed on Oct 12 and what's the workaround?", "expect": [("not_cites_prefix", ["slack:CH-SETTLE"]), ("not_contains", ["18,402"])], "label": "撤权后：私有频道的内容不再出现"},
+         {"kind": "mutate", "action": "slack.add_member", "params": {"channel": "CH-SETTLE", "user": "alice"}, "label": "还原：把 Alice 加回频道"}]},
+    {"id": "s5", "title": "5 · 审计查询", "brief": "合规官还原：谁、什么时候、问了什么、检索到哪些文档、每份文档的授权决定。",
+     "steps": [
+         {"kind": "audit", "as": "amy", "text": "Show me everything user 'jdoe' accessed related to the 'payment-gateway' Confluence space in the last 30 days.", "expect": [("rows_at_least", 10), ("filters_include", {"user": "jdoe", "platform": "confluence", "days": 30})], "label": "合规官用一句话查 jdoe 在 payment-gateway 空间 30 天的访问"},
+         {"kind": "audit", "as": "amy", "text": "Which attempts were denied for user ken?", "expect": [("denied_at_least", 1)], "label": "查外包人员被拒绝的访问尝试"},
+         {"kind": "verify", "as": "amy", "expect": [("chain_ok", True)], "label": "校验审计哈希链完整"}]},
+    {"id": "s6", "title": "6 · CTO 的两个示例问题", "brief": "跨 Confluence / Jira / Slack 的复盘与设计讨论汇总。",
+     "steps": [
+         {"kind": "ask", "as": "alice", "q": "What was the root cause of the payment outage last quarter, and what follow-up tickets were created?", "expect": [("cites_prefix", ["confluence:9400"]), ("cites_prefix", ["jira:PAY-900"]), ("contains_any", ["connection pool", "pool"])], "label": "上季度支付故障的根因与后续工单"},
+         {"kind": "ask", "as": "alice", "q": "Summarize the design discussion around the new auth service from last sprint's Slack threads and link the Confluence decision doc.", "expect": [("cites_prefix", ["slack:CH-AUTH"]), ("cites_prefix", ["confluence:9500"])], "label": "认证服务设计讨论摘要 + 决策文档链接"}]},
+    {"id": "s7", "title": "7 · 多模态", "brief": "图片 / 扫描 PDF / 录音里的内容被识别入库，权限与来源文档一致。",
+     "steps": [
+         {"kind": "ask", "as": "alice", "q": "What does the payment gateway architecture diagram show?", "expect": [("cites_modality", ["image"]), ("contains_any", ["api-gateway", "ledger"])], "label": "问架构图里画了什么（图像识别文本）"},
+         {"kind": "ask", "as": "alice", "q": "What was said on the incident bridge call about the root cause?", "expect": [("cites_modality", ["audio"]), ("contains_any", ["pool", "fifty"])], "label": "问事故电话会议里说了什么（语音转写）"},
+         {"kind": "ask", "as": "grace", "q": "What does the Acme Cloud MSA say about early termination fees?", "expect": [("cites_modality", ["pdf"]), ("contains_any", ["25%", "90 days"])], "label": "财务官问合同扫描件里的违约金条款（OCR）"},
+         {"kind": "ask", "as": "ken", "q": "What does the Acme Cloud MSA say about early termination fees?", "expect": [("not_cites_prefix", ["drive:fH-MSA"]), ("not_contains", ["25%"])], "label": "外包人员问同一个问题：看不到"}]},
+]
+
+
+def _judge(answer: dict, expect: list, extra: dict | None = None) -> list[dict]:
+    text = (answer or {}).get("text", "")
+    low = text.lower()
+    cites = [c["id"] for c in (answer or {}).get("citations", [])]
+    mods = {c.get("modality") for c in (answer or {}).get("citations", [])}
+    plats = {c["id"].split(":")[0] for c in (answer or {}).get("citations", [])}
+    out = []
+    for kind, arg in expect:
+        ex = extra or {}
+        if kind == "cites_prefix":
+            ok, label = any(c.startswith(p) for p in arg for c in cites), f"引用了 {' / '.join(arg)}"
+        elif kind == "not_cites_prefix":
+            ok, label = not any(c.startswith(p) for p in arg for c in cites), f"没有引用 {' / '.join(arg)}"
+        elif kind == "cites_platforms":
+            ok, label = all(p in plats for p in arg), f"同时引用了 {' + '.join(arg)}"
+        elif kind == "cites_modality":
+            ok, label = any(m in mods for m in arg), f"引用了 {' / '.join(arg)} 模态的资料"
+        elif kind == "contains_any":
+            ok, label = any(a.lower() in low for a in arg), f"回答里包含 {' / '.join(repr(a) for a in arg)}"
+        elif kind == "not_contains":
+            ok, label = not any(a.lower() in low for a in arg), f"回答里不包含 {' / '.join(repr(a) for a in arg)}"
+        elif kind == "sync_seconds_under":
+            ok, label = ex.get("sync_seconds", 999) < arg, f"来源变更在 {arg} 秒内进入索引（实测 {ex.get('sync_seconds', '—')} 秒）"
+        elif kind == "rows_at_least":
+            ok, label = ex.get("total", 0) >= arg, f"至少 {arg} 条访问记录（实际 {ex.get('total', 0)}）"
+        elif kind == "denied_at_least":
+            ok, label = sum(1 for r in ex.get("rows", []) if r["denied"]) >= arg, f"至少 {arg} 条被拒绝的记录"
+        elif kind == "filters_include":
+            ok, label = all(str(ex.get("filters", {}).get(k)) == str(v) for k, v in arg.items()), "一句话被正确解析成过滤条件 " + ", ".join(f"{k}={v}" for k, v in arg.items())
+        elif kind == "chain_ok":
+            ok, label = bool(ex.get("chain_ok")) == arg, "审计哈希链校验通过"
+        else:
+            ok, label = False, kind
+        out.append({"label": label, "ok": bool(ok)})
+    return out
+
+
+@router.get("/scenarios")
+def scenarios_list(who=Depends(current)):
+    return [{"id": s["id"], "title": s["title"], "brief": s["brief"], "steps": [{"label": st["label"], "kind": st["kind"], "as": st.get("as"), "q": st.get("q") or st.get("text")} for st in s["steps"]]} for s in SCENARIOS]
+
+
+@router.post("/scenarios/{scenario_id}/run")
+def scenarios_run(scenario_id: str, who=Depends(admin)):
+    """依次执行一个用例的所有步骤（真实提问、真实变更、真实同步），逐项断言，按行流式返回。需要管理权限，因为会改来源平台。"""
+    import uuid
+    from fastapi.responses import StreamingResponse
+    sc = next((s for s in SCENARIOS if s["id"] == scenario_id), None)
+    if sc is None:
+        raise HTTPException(404, "没有这个用例。")
+    rt = _runtime()
+    with W.database.transaction() as tx:
+        checked(tx, who, ADMIN_ROLES)
+
+    def identity_of(uid: str):
+        with W.database.transaction() as tx:
+            row = tx.get("member", uid)
+        if not row:
+            raise HTTPException(404, f"没有账号 {uid}")
+        return W.identity(row)
+
+    def run():
+        passed = 0
+        for i, st in enumerate(sc["steps"]):
+            yield json.dumps({"event": "step", "i": i, "label": st["label"], "kind": st["kind"], "as": st.get("as"), "q": st.get("q") or st.get("text"), "status": "running"}, ensure_ascii=False) + "\n"
+            t0 = time.time()
+            answer, extra = None, {}
+            try:
+                if st["kind"] == "ask":
+                    sid = f"scn-{uuid.uuid4().hex[:10]}"
+                    answer = W._ask(W.AskBody(question=st["q"], session_id=sid), identity_of(st["as"]))
+                    with W.database.transaction() as tx:      # 验收用的会话不留在用户的历史里
+                        tx.delete("conversation", f"{st['as']}:{sid}")
+                elif st["kind"] == "mutate":
+                    r = rt.apply(st["action"], st["params"], actor=f"scenario:{scenario_id}")
+                    extra["sync_seconds"] = round(time.time() - t0, 2)
+                elif st["kind"] == "audit":
+                    who2 = identity_of(st["as"])
+                    people = [p.id for p in rt.hub.directory.people]
+                    filters = parse_audit_text(st["text"], people)
+                    if "denied" in st["text"].lower():
+                        filters["decision"] = "denied"
+                    with W.database.transaction() as tx:
+                        res = audit_query(tx, who2, user=filters.get("user", ""), platform=filters.get("platform", ""), container=filters.get("container", ""), days=int(filters.get("days") or 0), decision=filters.get("decision", ""))
+                    extra = {**res, "filters": filters}
+                elif st["kind"] == "verify":
+                    from .audit.chain import verify
+                    with W.database.transaction() as tx:
+                        ok, _ = verify(tx.iter("audit_entry"), tx.get("meta", "audit_head")["hash"])
+                    extra["chain_ok"] = ok
+                checks = _judge(answer, st.get("expect", []), extra)
+                ok = all(c["ok"] for c in checks) if checks else True
+                passed += ok
+                payload = {"event": "result", "i": i, "status": "pass" if ok else "fail", "seconds": round(time.time() - t0, 1), "checks": checks}
+                if answer:
+                    payload["answer"] = {"text": answer["text"], "status": answer.get("status"), "citations": [{"id": c["id"], "title": c["title"], "source": c["source"], "modality": c.get("modality")} for c in answer["citations"]], "trace": answer.get("trace")}
+                if st["kind"] == "audit":
+                    payload["audit"] = {"filters": extra.get("filters"), "total": extra.get("total"), "sample": extra.get("rows", [])[:3]}
+                yield json.dumps(payload, ensure_ascii=False) + "\n"
+            except HTTPException as error:
+                yield json.dumps({"event": "result", "i": i, "status": "fail", "seconds": round(time.time() - t0, 1), "checks": [{"label": str(error.detail), "ok": False}]}, ensure_ascii=False) + "\n"
+            except Exception as error:   # noqa: BLE001
+                yield json.dumps({"event": "result", "i": i, "status": "fail", "seconds": round(time.time() - t0, 1), "checks": [{"label": f"执行失败：{type(error).__name__}", "ok": False}]}, ensure_ascii=False) + "\n"
+        yield json.dumps({"event": "done", "passed": passed, "total": len(sc["steps"])}) + "\n"
+
+    return StreamingResponse(run(), media_type="application/x-ndjson", headers={"cache-control": "no-store"})

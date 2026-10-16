@@ -21,7 +21,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <section className="login-aside">
       <Brand inverse />
       <div className="login-aside-copy"><span className="overline">BUTLER / WORKSPACE</span><h1>公司的资料，<br />在这里查。</h1><p>带着你的身份进入。<br />每次回答，都在你的权限范围内。</p>
-        {!enterprise && identities.length > 0 && <ol className="judge-guide" aria-label="体验路线"><li style={{ "--i": 0 } as React.CSSProperties}><b>Ken · 外包人员</b><span>问“供应商 X 合同、Payments 团队 Q4 预算有什么关联？”，看回答停在“需要授权”。</span></li><li style={{ "--i": 1 } as React.CSSProperties}><b>Sara · 安全工程师（管理权限）</b><span>打开“预授权审批”，批准 Ken 的申请；再回到 Ken 重新提问。</span></li><li style={{ "--i": 2 } as React.CSSProperties}><b>Amy · 审计员</b><span>看审计记录，校验哈希链，再试试攻防演示台。</span></li></ol>}</div>
+        {!enterprise && identities.length > 0 && <ol className="judge-guide" aria-label="体验路线"><li style={{ "--i": 0 } as React.CSSProperties}><b>Ken · 外包人员</b><span>问“Show me the security incident report from the Q3 breach”。他什么都拿不到，回答和“这份报告根本不存在”完全一样。</span></li><li style={{ "--i": 1 } as React.CSSProperties}><b>Maya 与 Pete</b><span>同样问“数据库迁移项目现在什么状态？上周 Slack 有什么阻塞？”。只有 Pete 在领导层私有频道里，多出预算超支和延期备选。</span></li><li style={{ "--i": 2 } as React.CSSProperties}><b>Sara · 管理权限</b><span>在「来源平台」改一页 runbook 或把人移出频道，几秒后再问；或在「赛题用例验收」一键跑完五个用例。</span></li><li style={{ "--i": 3 } as React.CSSProperties}><b>Amy · 合规官</b><span>在「审计记录」里用一句话查：jdoe 最近 30 天在 payment-gateway 空间看了什么。</span></li></ol>}</div>
       <div className="login-aside-foot"><span>Butler 企业知识助手</span><span>01 — 访问工作区</span></div>
     </section>
     <section className="login-main">
