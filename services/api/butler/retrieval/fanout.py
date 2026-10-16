@@ -57,5 +57,12 @@ def fan_out(store, identity: Identity, question: str, plan, k: int = 10, per_pla
     extra_ids = [l for l in dict.fromkeys(linked) if l not in out][:expand * 3]
     extra = store.passages(identity, extra_ids, " ".join(queries[:2]), per_doc=1)[:expand]
     result = [docs[i] for i in out] + extra
+    # 短文档整篇给：片段可能漏掉文档末尾（比如刚追加的一步）
+    budget = 16000
+    for n, d in enumerate(result[:8]):
+        full = store.full_doc(identity, d.id)
+        if full and len(full.text) > len(d.text) and len(full.text) <= budget:
+            result[n] = full
+            budget -= len(full.text)
     trace = {"queries": len(queries), "platforms": {p: sum(1 for d in result if d.source == p) for p in plan.platforms if any(d.source == p for d in result)}, "expanded": len(extra), "plan_source": getattr(plan, "source", "rules")}
     return result, trace

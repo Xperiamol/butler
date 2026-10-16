@@ -238,6 +238,26 @@ class HybridStore:
             out.append(Doc(i, m["source"], m["title"], "\n…\n".join(c.text for c in cs), frozenset(m["acl"]), tuple((c.start, c.end) for c in cs), cs[0].heading))
         return out
 
+    def full_doc(self, identity: Identity, doc_id: str, max_chars: int = 5000) -> Doc | None:
+        """短文档整篇交给生成器（“把每一步都列出来”这类问题只给几个片段会漏步骤）。超过 max_chars 的长文返回 None，仍用片段。"""
+        m = self.meta_of(doc_id)
+        if not m or not self._readable(identity, m) or doc_id not in self.index.by_doc:
+            return None
+        chunks = sorted((self.index.chunks[j] for j in self.index.by_doc[doc_id][1]), key=lambda c: c.start)
+        text, end = "", 0
+        for c in chunks:
+            if c.start > end:   # 块之间被跳过的通常是标题行（标题存在 heading 里，不在块正文里）：补回来
+                text += (f"\n\n## {c.heading.split(' > ')[-1]}\n" if c.heading else "\n")
+            elif c.start < end:
+                text += c.text[end - c.start:]
+                end = max(end, c.end)
+                continue
+            text += c.text
+            end = c.end
+            if len(text) > max_chars:
+                return None
+        return Doc(doc_id, m["source"], m["title"], text, frozenset(m["acl"]), ((chunks[0].start, end),), chunks[0].heading)
+
     def _rank(self, vis: dict[str, dict], query: str, k: int) -> list[Doc]:
         by = {m["id"]: m for m in self.metas}
         fresh = frozenset(d for d, m in vis.items() if self.index.has(d, m["content_hash"]))

@@ -7,7 +7,8 @@ import re
 
 from ..models import Doc
 
-CITE = re.compile(r"\[([A-Za-z0-9_.:/\-]+)\]")
+CITE = re.compile(r"\[([A-Za-z0-9_.:/@\-]+)\]")
+ORDINAL = re.compile(r"(?i)\b(?:step|steps|phase|phases|stage|part|no\.?|item|option|rule)\s*#?\d+|#\d+")
 NUMBER = re.compile(r"(?<![A-Za-z])\d+(?:\.\d+)?")   # Q4、H2 这类带字母前缀的标识不是数值论断
 
 
@@ -21,6 +22,7 @@ def verify_citations(draft: str, context: list[Doc], urls: bool = True) -> tuple
     literal = {t for d in context for t in CITE.findall(d.title + " " + d.text)}
     valid: list[str] = []
     problems: list[str] = []
+    everything = " ".join(d.title + " " + d.text for d in context)
     for line in draft.splitlines():
         ids = CITE.findall(line)
         for i in ids:
@@ -33,8 +35,11 @@ def verify_citations(draft: str, context: list[Doc], urls: bool = True) -> tuple
         if known:
             support = " ".join(by_id[i].title + " " + by_id[i].text for i in known)
             bare = re.sub(r"^\s*(?:[-*•]|#{1,4}|\d+[.)、])\s*", "", CITE.sub("", line))   # 行首的列表序号、标题符号不算论断里的数字
+            bare = ORDINAL.sub(" ", bare)                                                    # “Step 3”“phase 2”“#4” 这类序号也不算
             for n in NUMBER.findall(bare):
-                if n not in support:
+                # 数字必须有出处：先看这一行引用的文档；找不到再看本次检索到的全部资料（答案会把几份资料的数字合并成一行）。
+                # 两处都没有 = 编出来的数字，照旧拦下。
+                if n not in support and n not in everything:
                     problems.append(f"unsupported-number:{n}")
     if urls:
         # 输出里的链接必须出现在被引资料里：挡住“把内容拼进链接/图片地址外发”这类注入外泄

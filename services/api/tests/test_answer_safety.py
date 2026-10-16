@@ -144,3 +144,20 @@ def test_label_like_q4_is_not_a_number_claim_but_invented_numbers_still_fail():
     assert ok.status == "answered"
     bad = answer_question(who, "预算", store, [], KeywordJudge(), AuditLog(), generate=lambda q, d: "预算归零，涉及 500 万元。[d1]")
     assert bad.status == "citation_failed"
+
+
+def test_attachment_ids_with_at_sign_are_citations_not_numbers():
+    docs = [Doc("confluence:9010@timeline", "confluence", "Atlas plan — timeline", "Rehearsal #2 is blocked.", frozenset({"all"}))]
+    store, who = Store(docs), Identity("u", "U", frozenset({"all"}), "employee")
+    a = answer_question(who, "Atlas timeline rehearsal", store, [], KeywordJudge(), AuditLog(), generate=lambda q, d: "Rehearsal #2 is blocked. [confluence:9010@timeline]")
+    assert a.status == "answered" and a.citations == ["confluence:9010@timeline"]
+
+
+def test_numbers_may_come_from_any_retrieved_document_and_step_labels_are_ignored_but_invented_numbers_still_fail():
+    docs = [Doc("a", "confluence", "payment-service runbook", "payment-service scale to 12 replicas.", frozenset({"all"})), Doc("b", "jira", "payment-service ticket", "payment-service error budget burn above 10x for 15 minutes.", frozenset({"all"}))]
+    store, who = Store(docs), Identity("u", "U", frozenset({"all"}), "employee")
+    q = "payment-service"
+    ok = answer_question(who, q, store, [], KeywordJudge(), AuditLog(), generate=lambda _q, d: "Step 3 — scale to 12 replicas and watch the 10x burn rate for 15 minutes. [a][b]")
+    assert ok.status == "answered", ok.text
+    bad = answer_question(who, q, store, [], KeywordJudge(), AuditLog(), generate=lambda _q, d: "Scale to 12 replicas; the budget is 47 percent consumed. [a][b]")
+    assert bad.status == "citation_failed"

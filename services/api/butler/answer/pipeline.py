@@ -1,5 +1,6 @@
 from __future__ import annotations
 import hashlib
+import os
 import re
 import time
 from dataclasses import replace
@@ -131,6 +132,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
         context = kept
 
     status, hits, guard_ms, cited, followups = "answered", [], 0.0, [d.id for d in context], []
+    citation_problems: list[str] = []
     if not context and SMALL_TALK.match(question):
         text, cited = msg("greeting", question), []   # 纯寒暄：不检索、不调用模型
     elif not context:
@@ -158,6 +160,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
         if guard:
             valid, problems = ([], []) if no_info else verify_citations(draft, context, urls=injection)
             if problems:
+                citation_problems = (list(problems)[:8] if os.getenv("BUTLER_DEBUG_CITATIONS") else [p.split(":")[0] for p in problems][:6])   # 默认只记类型（unknown / unsupported-number / unlisted-url / no-citation），不记内容
                 text, status, cited = msg("unverified", question), "citation_failed", []
             else:
                 cited = valid
@@ -189,7 +192,7 @@ def answer_question(identity: Identity, question: str, store: Store, all_facts: 
                   "docs": cited, "degraded": status == "degraded", "status": status, "request_id": request_id,
                   "quarantined": quarantined, "question_flagged": bool(guard and injection and scan(question).flagged),
                   "answer_digest": hashlib.sha256(text.encode()).hexdigest()[:16], "event": "ask",
-                  "retrieved": retrieved_ids, "denied": denied, "platforms": trace.get("platforms", {}),
+                  "retrieved": retrieved_ids, "denied": denied, "platforms": trace.get("platforms", {}), "citation_problems": citation_problems,
                   "blocked_facts": [f.id for f in hits]})  # 只记 ID，不记内容
     return Answer(text=text, citations=cited, sources=[d for d in context if d.id in set(cited)], degraded=status in ("degraded", "refused", "needs_approval"), status=status, blocked_facts=[f.id for f in hits], followups=followups, trace=trace,
                   latency_ms=round((time.perf_counter() - t0) * 1000, 2), guard_ms=round(guard_ms, 2))

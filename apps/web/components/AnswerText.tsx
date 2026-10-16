@@ -3,13 +3,13 @@ import { useEffect, useState, type ReactNode } from "react";
 import SourceChip from "./SourceChip";
 import type { Citation } from "@/lib/api";
 
-const INLINE = /(\*\*[^*\n]+\*\*|\[[A-Za-z0-9_.:/\-]+\])/g;
+const INLINE = /(\*\*[^*\n]+\*\*|\[[A-Za-z0-9_.:/@\-]+\])/g;
 
 /** Inline text: **bold** and [source-id] markers, which become numbered references matching the source list below. */
 function inline(text: string, index: Map<string, number>, keyBase: string): ReactNode[] {
   return text.split(INLINE).filter(Boolean).map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) return <strong key={`${keyBase}${i}`}>{part.slice(2, -2)}</strong>;
-    const id = part.match(/^\[([A-Za-z0-9_.:/\-]+)\]$/)?.[1];
+    const id = part.match(/^\[([A-Za-z0-9_.:/@\-]+)\]$/)?.[1];
     if (id !== undefined) { const n = index.get(id); return n ? <sup key={`${keyBase}${i}`} className="cite-ref" title={id}>{n}</sup> : null; }
     return part;
   });
@@ -33,7 +33,7 @@ function blocks(raw: string): Block[] {
 /** `typing` reveals the text progressively (a freshly arrived answer); the source list appears once it is done. */
 export default function AnswerText({ text, citations, highlight = false, typing = false }: { text: string; citations: Citation[]; highlight?: boolean; typing?: boolean }) {
   // Rule-based answers arrive as "- [id] fact"; show the fact with its reference at the end, like the model answers do.
-  const raw = text.split("\n").map((l) => l.replace(/^- \[([\w.:/-]+)\]\s+(.*)$/, "- $2 [$1]")).join("\n").trim();
+  const raw = text.split("\n").map((l) => l.replace(/^- \[([\w.:/@-]+)\]\s+(.*)$/, "- $2 [$1]")).join("\n").trim();
   const [shown, setShown] = useState(typing ? 0 : raw.length);
   useEffect(() => {
     if (!typing || matchMedia("(prefers-reduced-motion: reduce)").matches) { setShown(raw.length); return; }

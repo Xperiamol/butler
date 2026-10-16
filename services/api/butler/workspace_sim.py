@@ -188,9 +188,12 @@ def audit_query(tx, who, *, user: str = "", platform: str = "", container: str =
     infos = _doc_info(tx, ref)
     out = []
     for e, p, allowed, denied in rows:
+        norm = lambda x: re.sub(r"[^a-z0-9]", "", str(x).lower())     # payment-gateway / Payment Gateway (PGW) / PGW 都认
+        want = norm(container)
+
         def keep(i):
             inf = infos.get(i, {})
-            return ((not platform or inf.get("platform") == platform) and (not container or container.lower() in (inf.get("container", "") + " " + str(inf.get("space", ""))).lower()) and (not doc or doc.lower() in i.lower() or doc.lower() in inf.get("title", "").lower()))
+            return ((not platform or inf.get("platform") == platform) and (not want or want in norm(inf.get("container", "")) or want == norm(inf.get("space", ""))) and (not doc or doc.lower() in i.lower() or doc.lower() in inf.get("title", "").lower()))
         a = [i for i in allowed if keep(i)]
         dn = [i for i in denied if keep(i)]
         if (platform or container or doc) and not (a or dn):
