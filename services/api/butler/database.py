@@ -23,6 +23,9 @@ documents = Table("documents", metadata,
                   Column("id", String(256), primary_key=True), Column("source", String(32), index=True),
                   Column("content_hash", String(64)), Column("title", String(500)), Column("acl", JSON),
                   Column("fresh_until", Float),   # 平台同步来的文档：权限复核有效期，过期即视为不可读
+                  Column("updated", Float),       # 来源上最后更新时间（平台同步来的文档才有）：检索时的时间偏好用
+                  Column("links", JSON),          # 这份文档引用的其他文档 id（Jira 编号等）：跨平台关联展开用
+                  Column("container", String(200)), Column("modality", String(16)),   # 空间 / 项目 / 频道 / 共享盘 与 模态：来源汇总用，不必读正文
                   Column("data", JSON, nullable=False))
 facts = Table("facts", metadata,
               Column("id", String(256), primary_key=True), Column("source_doc", String(256), index=True),
@@ -60,7 +63,10 @@ sync_jobs = Table("sync_jobs", metadata,
 TYPED = {
     "document": (documents, lambda d: {"source": d.get("source"), "content_hash": d.get("content_hash"),
                                              "title": d.get("title"), "acl": d.get("acl"),
-                                             "fresh_until": (d.get("sync") or {}).get("acl_fresh_until")}),
+                                             "fresh_until": (d.get("sync") or {}).get("acl_fresh_until"),
+                                             "updated": (d.get("meta") or {}).get("updated"),
+                                             "links": (d.get("meta") or {}).get("links"),
+                                             "container": (d.get("meta") or {}).get("container"), "modality": (d.get("meta") or {}).get("modality")}),
     "fact": (facts, lambda d: {"source_doc": d.get("source_doc")}),
     "member": (members, lambda d: {"active": bool(d.get("active"))}),
     "conversation": (conversations, lambda d: {"owner": d.get("owner"), "updated": d.get("updated", 0.0)}),

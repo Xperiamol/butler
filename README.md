@@ -16,7 +16,7 @@
 | 前提自动发现 | 训练的小模型自动找出能拼出机密的资料（v2 加入中文语义特征和 quorum 规则），见[说明](docs/premise-discovery.md) |
 | 语义判官 | 训练的线性模型，用中文词向量的软对齐特征判断回答是否“说出”受限结论，补关键词判官的改述盲区；依赖约 570 MB 的可选词向量，见[独立评测](docs/independent-eval.md) |
 | 独立评测 | 手写评测集 `seed/eval/`（开发/测试切分，测试集只能跑一次）与结果见[独立评测](docs/independent-eval.md) |
-| 生成与结论检查 | 企业接口已写，真实模型待联调。已有：引用核验（编号与数字）、降级文本复核、事实绑定正文版本、依赖闭包检查、级联候选筛选（超预算拒答） |
+| 生成与结论检查 | 企业接口已写；已用 gpt-5.4-mini 做过一次真实模型评测（结果与代价见 [独立评测](docs/independent-eval.md)），企业部署联调待做。已有：引用核验（编号与数字）、降级文本复核、事实绑定正文版本、依赖闭包检查、级联候选筛选（超预算拒答） |
 | 审计 | 库内哈希链 + Ed25519 签名检查点导出 + 独立验证命令行（`python -m butler.audit.verify_cli`）；失败请求、审计查看均留痕 |
 | 红队与评测 | 30+30 离线用例；合成基准（真实手册背景 + 种子生成拼图链，独立评分器，见[基准说明](docs/benchmark.md)）；手写独立评测集（见上）。生成器均是离线模拟，不是实模结果 |
 | 存储 | 业务对象拆成带索引的表（文档、事实、成员、会话、审计、块、向量、同步任务），旧数据启动时幂等迁移 |
@@ -46,6 +46,12 @@ npm install && npm run dev      # http://localhost:3000（可用 BUTLER_API 指�
 ```
 
 可选的中文语义能力（语义判官、前提发现 v2、跨语言检索，约 570 MB 词向量）：`pip install -r requirements-semantic.txt`；缺失时自动退回关键词/词法路径。训练脚本需要 `requirements-train.txt`。
+
+**接真实大模型（演示模式也可以）：** `export LLM_API_KEY=… LLM_BASE_URL=https://…/v1 BUTLER_LLM_MODEL=<模型名>` 后运行 `scripts/dev-live.sh`；也可以在「配置中心」填模型名。设了之后，知识问答、攻防演示台的回答和结论判定都走真实模型，顶栏会标出“真实模型”；不设则是离线规则演示。首页那段 3D 动画始终是规则版示意。攻防演示台的拼图剧本来自评测集里 gpt-5.4-mini 无防护时真会拼出结论的链（`seed/tidepool/lab-chains.json`，合成资料）。
+
+**体验路线（演示模式，登录页「体验演示账号」，无需密码）：** ① Ken（外包人员）在「知识问答」问“供应商 X 合同、Payments 团队 Q4 预算有什么关联？”，回答停在“需要授权”；② Sara（安全工程师，管理权限）在「预授权审批」批准，Ken 页面的倒计时卡片变绿，点“重新提问”；③ 「攻防演示台」可以自己发起拼图攻击、扫描注入文本、在审计链上动手篡改一条记录；④ Amy（审计员）看审计记录和哈希链校验。演示账号只在演示模式存在，企业模式不加载。
+
+架构定位与边界见 [架构页](docs/architecture-iam.md)；被拦回答的抽样复核见 [复核](docs/human-review.md)。真实模型评测：`export LLM_API_KEY=… LLM_BASE_URL=https://…/v1`，然后 `python -m butler.redteam.eval_llm --model <模型名> --split dev --limit 10`（调用按提示哈希缓存到 `.runtime/llm-cache/`，带独立 LLM 评分器、延迟与 token 统计；测试集同一模型只能跑一次）。演示：`python scripts/demo.py`（四个场景，适合录屏，脚本见 [演示视频脚本](docs/demo-video.md)）。
 
 评测：`python scripts/fetch_eval_handbook.py` 下载固定版本手册，然后 `python -m butler.redteam.eval_set --split dev`（测试集只能跑一次，见[独立评测](docs/independent-eval.md)）。同步 worker：`python -m butler.workers.run`。
 

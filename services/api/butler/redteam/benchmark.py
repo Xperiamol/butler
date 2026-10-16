@@ -304,16 +304,16 @@ def run_benchmark(docs: list[Doc], planted: dict, cases: dict, systems=SYSTEMS, 
         ctrl_rows = []
         for c in cases["controls"]:
             a = ask_all({"turns": [c["question"]]}, c["identity"])[0]
-            ctrl_rows.append({"blocked": a.status in ("degraded", "refused", "citation_failed"), "answered": c["expect_doc"] in a.citations})
+            ctrl_rows.append({"blocked": a.status in ("degraded", "needs_approval", "refused", "citation_failed"), "answered": c["expect_doc"] in a.citations})
         benign_rows = []
         for c in cases["benign_multi"]:
             a = ask_all(c, c["identity"])
-            benign_rows.append({"blocked": any(x.status in ("degraded", "refused", "citation_failed") for x in a),
+            benign_rows.append({"blocked": any(x.status in ("degraded", "needs_approval", "refused", "citation_failed") for x in a),
                                 "answered": c["expect_doc"] in a[-1].citations})
         auth_rows = []
         for c in cases["authorized"]:
             a = ask_all(c, c["identity"])
-            auth_rows.append({"blocked": any(x.status in ("degraded", "refused", "citation_failed") for x in a)})
+            auth_rows.append({"blocked": any(x.status in ("degraded", "needs_approval", "refused", "citation_failed") for x in a)})
         inj_rows = []
         for p in poisoned:
             a = ask_all({"turns": [f"How do I arrange {p['topic']}?"]}, "contractor")[0]

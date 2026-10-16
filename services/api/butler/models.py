@@ -38,9 +38,11 @@ class Answer:
     text: str
     citations: list[str] = field(default_factory=list)  # doc ids
     degraded: bool = False
-    status: str = "answered"  # answered | degraded | refused | citation_failed | no_evidence
+    status: str = "answered"  # answered | degraded | needs_approval | refused | citation_failed | no_evidence
     blocked_facts: list[str] = field(default_factory=list)  # 只给审计和演示对比用，不返回给提问者
     latency_ms: float = 0.0
     guard_ms: float = 0.0  # 结论检查额外耗时
     data_source: str = "fake"  # UI 必须展示
     sources: list = field(default_factory=list)  # 实际被引用的文档（含原文位置），供界面展示出处
+    followups: list = field(default_factory=list)  # 模型建议的追问（已和正文一起过结论检查）
+    trace: dict = field(default_factory=dict)      # 检索过程摘要（各平台命中数、子查询数）；只含提问者可读的资料的计数

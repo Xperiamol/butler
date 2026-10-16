@@ -1,6 +1,6 @@
 """依赖闭包防护：不看措辞，只看用户累计拿到的前提资料是否已能推出受限结论。"""
 from butler.answer.mosaic import KeywordJudge
-from butler.answer.pipeline import SAFE_REFUSAL, answer_question
+from butler.answer.pipeline import NEEDS_APPROVAL, answer_question
 from butler.answer.session import Session
 from butler.audit.chain import AuditLog
 from butler.models import Doc, Fact, Identity
@@ -29,7 +29,7 @@ def run(who, questions):
 def test_second_fragment_is_refused_even_though_judge_sees_nothing():
     first, second = run(STAFF, ["猎鹰项目预算怎么样？", "奥比特尽调进展如何？"])
     assert first.status == "answered" and "a" in first.citations
-    assert second.status == "refused" and second.text == SAFE_REFUSAL and second.blocked_facts == ["f-acq"]
+    assert second.status == "needs_approval" and second.text == NEEDS_APPROVAL and second.blocked_facts == ["f-acq"]
 
 
 def test_single_fragment_user_is_not_blocked():
@@ -46,4 +46,4 @@ def test_both_fragments_in_one_question_refused_before_generation():
     store = Store(DOCS)
     a = answer_question(STAFF, "猎鹰项目预算和奥比特尽调进展分别怎么样？", store, [FACT], KeywordJudge(), AuditLog(),
                         generate=lambda q, ctx: called.append(1) or gen(q, ctx))
-    assert a.status == "refused" and not called  # 不调用模型，省钱也不暴露
+    assert a.status == "needs_approval" and not called  # 不调用模型，省钱也不暴露

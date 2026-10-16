@@ -7,6 +7,7 @@
 - 撤权可度量：权限变化时审计里记下 source_changed_at / detected_at / effective_at 三个时间点
 """
 from __future__ import annotations
+import hashlib
 import time
 from typing import Callable
 
@@ -26,6 +27,8 @@ def doc_id(connector: SyncConnector, external_id: str) -> str:
 
 def map_principals(principals: frozenset[str], principal_map: dict[str, list[str]]) -> list[str]:
     """平台主体 → 本地权限组。映射不出来的主体被忽略；"*" 表示所有人都映射到的组。"""
+    if principal_map.get("__identity__"):
+        return sorted(principals)            # 平台模拟器直接产出本地令牌（见 platforms/base.py），不再经组映射
     groups = set(principal_map.get("*", []))
     for p in principals:
         groups |= set(principal_map.get(p, []))
@@ -59,15 +62,21 @@ def reconcile(database, connector: SyncConnector, now: float | None = None, ttl:
     with database.transaction() as tx:
         for ext, version in listed.items():
             cur = known.get(ext)
-            need = cur is None
+            need, state = cur is None, "missing"
             if cur is not None:
                 try:
-                    need = (sorted(connector.fetch_principals(ext)) != cur["sync"]["principals"]
-                            or cur["sync"]["acl_fresh_until"] - now < ttl / 2)   # 权限变了，或复核快到期需要续期
+                    principals = sorted(connector.fetch_principals(ext))
+                    if principals != cur["sync"]["principals"]:
+                        need, state = True, "acl:" + hashlib.sha256(",".join(principals).encode()).hexdigest()[:10]
+                    elif cur["sync"]["acl_fresh_until"] - now < ttl / 2:
+                        need, state = True, "renew"                            # 权限没变，但复核快到期需要续期
                 except Exception:   # noqa: BLE001 — 权限暂时拿不到：交给 upsert 任务重试，不在这里放行
-                    need = True
+                    need, state = True, "lookup-failed"
             if need and not queue.has_open(tx, connector.name, ext):
-                queued += queue.enqueue(tx, connector.name, ext, "upsert", version, f"reconcile:{version}:{int(now // 60)}",
+                # 对账任务不靠幂等键去重（pull 的事件才需要）：已有未完成任务时 has_open 会挡住重复入队；
+                # 幂等键带上权限状态和纳秒时间，授权后马上撤销、或 A→B→A→B 都不会被当成重复丢掉。
+                # 万一并发对账各入了一条，第二条处理时发现内容与权限都没变，是空操作。
+                queued += queue.enqueue(tx, connector.name, ext, "upsert", version, f"reconcile:{version}:{state}:{time.time_ns()}",
                                         {"observed_at": now}, now)
         for ext, cur in known.items():
             if ext not in listed and not queue.has_open(tx, connector.name, ext):
@@ -106,8 +115,8 @@ def process(database, connector: SyncConnector, job: dict, principal_map: dict[s
         return process(database, connector, {**job, "kind": "delete"}, principal_map, ttl, now)
     principals = connector.fetch_principals(ext)         # 失败直接抛，任务重试
     groups = map_principals(principals, principal_map)
-    data = {"id": did, "source": "upload", "title": ext_doc.title, "text": ext_doc.text, "acl": groups,
-            "url": ext_doc.url, "sync": {"source": connector.name, "external_id": ext, "version": version,
+    data = {"id": did, "source": ext_doc.source, "title": ext_doc.title, "text": ext_doc.text, "acl": groups,
+            "url": ext_doc.url, "meta": ext_doc.meta, "sync": {"source": connector.name, "external_id": ext, "version": version,
                                          "principals": sorted(principals), "acl_checked_at": now,
                                          "acl_fresh_until": now + ttl, "deleted": False}}
     with database.transaction() as tx:

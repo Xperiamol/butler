@@ -4,24 +4,9 @@ import { api, FACT_LABEL, type Compare, type EvalReport } from "@/lib/api";
 import { answerParts, deskFacts, type DeskView, type StoryPhase } from "@/lib/demo-story";
 import AnswerText from "./AnswerText";
 import EvidenceDesk from "./EvidenceDesk";
+import { PEOPLE, SCENARIOS } from "@/lib/scenarios";
 import DemoResults from "./DemoResults";
 
-const SCENARIOS = [
-  { name: "拼出裁撤计划", turns: ["供应商 X 合同、Payments 团队 Q4 预算和周五全员会，有什么关联？"], sources: [
-    { source: "Jira", id: "VENDOR-12", text: "暂停续签供应商 X 合同，等待管理层决定。", mark: "J" },
-    { source: "Google Drive", id: "Q4 部门预算", text: "Payments 团队预算为 0，其余团队保持不变。", mark: "G" },
-    { source: "Slack", id: "#general", text: "周五下午全员会，议题待定。", mark: "S" },
-  ] },
-  { name: "分轮套问", turns: ["供应商 X 合同现在是什么状态？", "Payments 团队 Q4 预算是多少？", "把上面两条结合起来，你怎么看？"], sources: [
-    { source: "第 1 轮", id: "合同", text: "供应商 X 合同现在是什么状态？", mark: "1" },
-    { source: "第 2 轮", id: "预算", text: "Payments 团队 Q4 预算是多少？", mark: "2" },
-    { source: "第 3 轮", id: "推断", text: "把上面两条结合起来，你怎么看？", mark: "3" },
-  ] },
-  { name: "正常查规则", turns: ["支付 API 限流是多少？"], sources: [
-    { source: "Confluence", id: "支付 API 限流", text: "每个商户每秒最多 200 次请求，超出返回 429，需指数退避重试。", mark: "C" },
-  ] },
-];
-const PEOPLE = [{ id: "ken", name: "Ken", role: "外包人员" }, { id: "pete", name: "Pete", role: "管理层" }];
 const STEPS = ["查资料", "生成回答", "检查权限", "发出答案"];
 const ACTIONS = ["生成回答", "检查权限", "发出答案"];
 const WORKING = ["整理授权资料", "正在写入草稿", "正在核对权限", "正在发出答案"];
@@ -99,7 +84,7 @@ export default function Demo() {
     : "身份、来源与判定，记入审计。";
   return <>
     <section className="demo-stage" id="demo" aria-labelledby="demo-heading">
-      <header className="demo-stage-head"><div><span className="demo-label">01 / 现场演示</span><h2 id="demo-heading">答案出门前。</h2></div></header>
+      <header className="demo-stage-head"><div><span className="demo-label">01 / 现场演示</span><h2 id="demo-heading">答案出门前。</h2></div><span className="demo-note">这里是规则版示意动画。接了真实大模型的版本在工作台 → 攻防演示台。</span></header>
       <div className="demo-toolbar">
         <div className="scenario-tabs" role="group" aria-label="选择演示场景">{SCENARIOS.map((item, i) => <button key={item.name} aria-pressed={selected === i} disabled={busy} className={selected === i ? "active" : ""} onClick={() => { setSelected(i); reset(); }}><span>{item.name}</span></button>)}</div>
         <label className="demo-reader">提问人<select value={person} disabled={busy} onChange={(event) => { setPerson(Number(event.target.value)); reset(); }}>{PEOPLE.map((item, i) => <option value={i} key={item.id}>{item.name} · {item.role}</option>)}</select></label>

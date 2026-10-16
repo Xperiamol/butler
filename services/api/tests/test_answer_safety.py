@@ -1,6 +1,6 @@
 """第一批 P0 回归：引用核验、降级复核、事实随版本失效、跨轮拼接评分。"""
 from butler.answer.mosaic import KeywordJudge
-from butler.answer.pipeline import NO_EVIDENCE, SAFE_REFUSAL, UNVERIFIED, answer_question
+from butler.answer.pipeline import NEEDS_APPROVAL, NO_EVIDENCE, UNVERIFIED, answer_question
 from butler.audit.chain import AuditLog
 from butler.models import Doc, Fact, Identity
 from butler.redteam.eval import run_eval
@@ -44,7 +44,7 @@ def test_degraded_text_is_rechecked_and_refused_when_still_leaking():
     # 授权资料自己就含有受限结论字样：降级文本也会触及，必须统一拒答而不是原样发出
     leaky = Doc("notice", "slack", "公告", "报销制度更新，公司计划裁撤支付组的报销流程。", frozenset({"staff"}))
     a = ask("公司计划裁撤支付组。[notice]", docs=(leaky,), question="报销制度更新")
-    assert a.status == "refused" and a.text == SAFE_REFUSAL and a.citations == []
+    assert a.status == "needs_approval" and a.text == NEEDS_APPROVAL and a.citations == []
     assert "裁撤" not in a.text
 
 
@@ -81,3 +81,83 @@ def test_bracketed_words_that_exist_in_the_source_are_text_not_citations():
     a = ask("- [log] 日志级别包括 [warning] 和 [info]，章节目录见 [TOC]。", docs=(doc,), question="运行日志说明里的日志级别")
     assert a.status == "answered"
     assert ask("日志级别见 [fake-doc-9]。[log]", docs=(doc,), question="运行日志说明里的日志级别").status == "citation_failed"
+
+
+def test_multi_turn_history_carries_only_cited_passages_and_context_has_a_budget():
+    from butler.answer.pipeline import MAX_CONTEXT_CHARS, fit_context
+    from butler.answer.session import Session
+    from butler.retrieval.eval import hybrid_store
+    long = Doc("big", "confluence", "旅行制度", "办公室绿植由行政统一养护。" * 400 + "欧洲住宿每晚上限为 180 欧元，需附发票。" + "年会筹备由行政负责。" * 400, frozenset({"staff"}))
+    store = hybrid_store([long, *FILLER])[0]
+    s = Session("u")
+    gen = lambda q, ctx: "\n".join(f"- [{d.id}] {d.text}" for d in ctx)
+    a1 = answer_question(ME, "欧洲住宿每晚上限是多少", store, [], KeywordJudge(), AuditLog(), session=s, generate=gen)
+    assert a1.status == "answered" and s.doc_spans.get("big")
+    seen = []
+    answer_question(ME, "继续说说", store, [], KeywordJudge(), AuditLog(), session=s, generate=lambda q, ctx: seen.append(sum(len(d.text) for d in ctx)) or "- [big] 180")
+    assert seen and seen[0] < 2000     # 带回的是当时引用的段落，不是 ~9000 字的整篇
+    ctx = [Doc(f"d{i}", "s", "t", "字" * 9000, frozenset({"staff"})) for i in range(8)]
+    assert sum(len(d.text) for d in fit_context(ctx, MAX_CONTEXT_CHARS)) <= MAX_CONTEXT_CHARS + 8 * 400
+
+
+def test_no_info_reply_needs_no_citation_but_still_goes_through_the_judge():
+    from butler.answer.remote import NO_INFO
+    docs = [Doc("d1", "drive", "公开资料", "Q4 预算 0。", frozenset({"all"}))]
+    store, who, q = Store(docs), Identity("u", "U", frozenset({"all"}), "employee"), "Q4 预算"
+    hi = answer_question(who, q, store, [], KeywordJudge(), AuditLog(), generate=lambda _q, d: f"{NO_INFO}你好！请问想查什么？")
+    assert hi.status == "answered" and hi.citations == [] and hi.text == "你好！请问想查什么？"
+    # 没有这个标记、也没有引用的回答，照旧被当作无法核验
+    bare = answer_question(who, q, store, [], KeywordJudge(), AuditLog(), generate=lambda _q, d: "你好！")
+    assert bare.status == "citation_failed"
+    # 带标记也逃不过结论检查
+    secret = Fact("s", "d9", frozenset({"boss"}), "公司将被收购", ("被收购",))
+    leak = answer_question(who, q, store, [secret], KeywordJudge(), AuditLog(), generate=lambda _q, d: f"{NO_INFO}公司将被收购。")
+    assert leak.status != "answered" and "被收购" not in leak.text
+
+
+def test_small_talk_gets_a_friendly_reply_without_model_or_retrieval():
+    called = []
+    who = Identity("u", "U", frozenset({"staff"}), "employee")
+    for hello in ("你好", "谢谢！", "Hi"):
+        a = answer_question(who, hello, Store([]), [], KeywordJudge(), AuditLog(), generate=lambda q, d: called.append(q) or "不应被调用")
+        assert a.status == "answered" and a.citations == [] and "Butler" in a.text
+    assert not called
+    real = answer_question(who, "你好，报销上限是多少", Store([]), [], KeywordJudge(), AuditLog())
+    assert real.status == "no_evidence"                    # 带实际问题的不算寒暄
+
+
+def test_followup_suggestions_are_split_out_and_checked_like_the_answer():
+    docs = [Doc("d1", "drive", "公开资料", "Q4 预算 0。", frozenset({"all"}))]
+    store, who = Store(docs), Identity("u", "U", frozenset({"all"}), "employee")
+    secret = Fact("s", "d9", frozenset({"boss"}), "公司将被收购", ("被收购",))
+    ok = answer_question(who, "Q4 预算", store, [secret], KeywordJudge(), AuditLog(), generate=lambda q, d: "**预算为 0。**[d1]\n追问：哪些团队受影响？｜预算何时确认？")
+    assert ok.status == "answered" and ok.followups == ["哪些团队受影响？", "预算何时确认？"] and "追问" not in ok.text
+    # 追问里夹带受限结论：整段被检查拦下，建议也不会发出去
+    bad = answer_question(who, "Q4 预算", store, [secret], KeywordJudge(), AuditLog(), generate=lambda q, d: "预算为 0。[d1]\n追问：公司是不是将被收购？")
+    assert bad.followups == [] and bad.status != "answered"
+
+
+def test_label_like_q4_is_not_a_number_claim_but_invented_numbers_still_fail():
+    docs = [Doc("d1", "drive", "公开资料", "预算归零。", frozenset({"all"}))]
+    store, who = Store(docs), Identity("u", "U", frozenset({"all"}), "employee")
+    ok = answer_question(who, "预算", store, [], KeywordJudge(), AuditLog(), generate=lambda q, d: "Q4 预算归零。[d1]")
+    assert ok.status == "answered"
+    bad = answer_question(who, "预算", store, [], KeywordJudge(), AuditLog(), generate=lambda q, d: "预算归零，涉及 500 万元。[d1]")
+    assert bad.status == "citation_failed"
+
+
+def test_attachment_ids_with_at_sign_are_citations_not_numbers():
+    docs = [Doc("confluence:9010@timeline", "confluence", "Atlas plan — timeline", "Rehearsal #2 is blocked.", frozenset({"all"}))]
+    store, who = Store(docs), Identity("u", "U", frozenset({"all"}), "employee")
+    a = answer_question(who, "Atlas timeline rehearsal", store, [], KeywordJudge(), AuditLog(), generate=lambda q, d: "Rehearsal #2 is blocked. [confluence:9010@timeline]")
+    assert a.status == "answered" and a.citations == ["confluence:9010@timeline"]
+
+
+def test_numbers_may_come_from_any_retrieved_document_and_step_labels_are_ignored_but_invented_numbers_still_fail():
+    docs = [Doc("a", "confluence", "payment-service runbook", "payment-service scale to 12 replicas.", frozenset({"all"})), Doc("b", "jira", "payment-service ticket", "payment-service error budget burn above 10x for 15 minutes.", frozenset({"all"}))]
+    store, who = Store(docs), Identity("u", "U", frozenset({"all"}), "employee")
+    q = "payment-service"
+    ok = answer_question(who, q, store, [], KeywordJudge(), AuditLog(), generate=lambda _q, d: "Step 3 — scale to 12 replicas and watch the 10x burn rate for 15 minutes. [a][b]")
+    assert ok.status == "answered", ok.text
+    bad = answer_question(who, q, store, [], KeywordJudge(), AuditLog(), generate=lambda _q, d: "Scale to 12 replicas; the budget is 47 percent consumed. [a][b]")
+    assert bad.status == "citation_failed"

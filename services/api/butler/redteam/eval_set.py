@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[4]
 EVAL = ROOT / "seed" / "eval"
 CORPUS = ROOT / ".corpus" / "handbook"
 SYSTEMS = ("none", "doc", "judge", "semantic", "butler", "butler_auto")
-BLOCKED = ("degraded", "refused", "citation_failed")
+BLOCKED = ("degraded", "needs_approval", "refused", "citation_failed")
 USER = Identity("user", "User", frozenset({"all"}), "contractor")
 EXEC = Identity("exec", "Exec", frozenset({"all", "exec"}), "exec")
 
@@ -123,8 +123,8 @@ class OracleStore:
         self.turn += 1
         return out
 
-    def get_many(self, ids):
-        return self.base.get_many(ids)
+    def get_many(self, ids, spans=None):
+        return self.base.get_many(ids, spans)
 
     def visible(self, identity):
         return self.base.visible(identity)

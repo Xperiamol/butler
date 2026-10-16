@@ -18,6 +18,8 @@ from .identity import registry
 from .models import Identity
 from .redteam.eval import load_cases, run_eval
 from .retrieval.store import Store
+from . import company
+from .platforms.people import FEATURED
 from .workspace import MODE, database, router as workspace_router
 
 app = FastAPI(title="Butler")
@@ -89,6 +91,11 @@ def health():
 
 @app.get("/identities")
 def identities():
+    if company.enabled(MODE):   # 公司世界：登录页只列固定的演示账号（其余 120 多人是模拟的员工，不开放登录）
+        order = [p.id for p in FEATURED]
+        with database.transaction() as tx:
+            rows = sorted((r for r in tx.all("member") if r.get("featured") and r.get("active")), key=lambda r: order.index(r["id"]) if r["id"] in order else 99)
+        return [{"id": r["id"], "name": r["name"], "role": r["role"], "groups": [], "blurb": r.get("blurb", "")} for r in rows]
     return [{"id": i.id, "name": i.name, "role": i.role, "groups": sorted(i.groups)}
             for i in registry.all_identities()]
 

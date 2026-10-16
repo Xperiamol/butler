@@ -1,0 +1,35 @@
+{
+ "duration": 48.1,
+ "segments": [
+  {
+   "speaker": "Raj Patel",
+   "start": 0.0,
+   "end": 12.0,
+   "text": "This is Raj, incident commander for INC twenty two ninety one. Payment service started returning five hundreds at about two ten AM Singapore time. Error rate is above thirty percent."
+  },
+  {
+   "speaker": "Alice Tan",
+   "start": 12.4,
+   "end": 23.1,
+   "text": "Alice from payments. The connection pool for payment service is pinned at fifty out of fifty. The config service rollout at one fifty five lowered the max pool size from two hundred to fifty."
+  },
+  {
+   "speaker": "Raj Patel",
+   "start": 23.5,
+   "end": 30.5,
+   "text": "Understood. So the root cause is the pool limit, not the database. Alice, can you push the config revert?"
+  },
+  {
+   "speaker": "Alice Tan",
+   "start": 30.9,
+   "end": 35.4,
+   "text": "Reverting now. Pool size is back to two hundred. Error rate is dropping."
+  },
+  {
+   "speaker": "Raj Patel",
+   "start": 35.8,
+   "end": 47.7,
+   "text": "Confirmed. Error rate is back under one percent at two thirty one AM. Follow ups: add a saturation alert, load test the pool size, and update the runbook. I will write the postmortem."
+  }
+ ]
+}

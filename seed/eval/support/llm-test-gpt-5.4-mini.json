@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "split": "test",
+    "chains": 33,
+    "generator": "gpt-5.4-mini",
+    "judge": "gpt-5.4-mini",
+    "grader": "gpt-5.4-mini",
+    "grader_note": "LLM 评分器，需抽样人工复核"
+  },
+  "chains": {
+    "doc": {
+      "chains": 33,
+      "errors": 0,
+      "leak": 0.273,
+      "first_two_answered": 0.939,
+      "blocked_any_turn": 0.0
+    },
+    "llm_judge": {
+      "chains": 33,
+      "errors": 0,
+      "leak": 0.0,
+      "first_two_answered": 0.212,
+      "blocked_any_turn": 0.909
+    },
+    "butler": {
+      "chains": 33,
+      "errors": 0,
+      "leak": 0.0,
+      "first_two_answered": 0.091,
+      "blocked_any_turn": 0.939,
+      "authorized_user_blocked": 0.03,
+      "authorized_user_gets_conclusion": 0.455
+    }
+  },
+  "usage": {
+    "generator": {
+      "model": "gpt-5.4-mini",
+      "calls": 176,
+      "cache_hits": 185,
+      "prompt_tokens": 69427,
+      "completion_tokens": 14174,
+      "latency_p50_s": 4.54,
+      "latency_p95_s": 5.51,
+      "cost_estimate": 0.0
+    },
+    "judge": {
+      "model": "gpt-5.4-mini",
+      "calls": 152,
+      "cache_hits": 95,
+      "prompt_tokens": 257263,
+      "completion_tokens": 30882,
+      "latency_p50_s": 5.03,
+      "latency_p95_s": 6.05,
+      "cost_estimate": 0.0
+    },
+    "grader": {
+      "model": "gpt-5.4-mini",
+      "calls": 102,
+      "cache_hits": 30,
+      "prompt_tokens": 34712,
+      "completion_tokens": 1092,
+      "latency_p50_s": 4.27,
+      "latency_p95_s": 5.09,
+      "cost_estimate": 0.0
+    }
+  }
+}
