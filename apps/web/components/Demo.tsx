@@ -84,7 +84,7 @@ export default function Demo() {
     : "身份、来源与判定，记入审计。";
   return <>
     <section className="demo-stage" id="demo" aria-labelledby="demo-heading">
-      <header className="demo-stage-head"><div><span className="demo-label">01 / 现场演示</span><h2 id="demo-heading">答案出门前。</h2></div></header>
+      <header className="demo-stage-head"><div><span className="demo-label">01 / 现场演示</span><h2 id="demo-heading">答案出门前。</h2></div><span className="demo-note">这里是规则版示意动画。接了真实大模型的版本在工作台 → 攻防演示台。</span></header>
       <div className="demo-toolbar">
         <div className="scenario-tabs" role="group" aria-label="选择演示场景">{SCENARIOS.map((item, i) => <button key={item.name} aria-pressed={selected === i} disabled={busy} className={selected === i ? "active" : ""} onClick={() => { setSelected(i); reset(); }}><span>{item.name}</span></button>)}</div>
         <label className="demo-reader">提问人<select value={person} disabled={busy} onChange={(event) => { setPerson(Number(event.target.value)); reset(); }}>{PEOPLE.map((item, i) => <option value={i} key={item.id}>{item.name} · {item.role}</option>)}</select></label>

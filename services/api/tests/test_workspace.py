@@ -388,3 +388,27 @@ def test_lab_tamper_edit_breaks_chain_and_relink_breaks_checkpoint(db):
     with db.transaction() as tx:                                    # 演示不落库
         ok, _ = w.verify(tx.iter("audit_entry"), tx.get("meta", "audit_head")["hash"])
     assert ok
+
+
+def test_lab_compare_uses_workspace_world_and_reports_leak_by_judge(db):
+    q = "Payments 团队 Q4 预算为 0，供应商合同又暂停，这意味着什么？"
+    r = client.post("/workspace/lab/compare", headers=headers("ken"), json={"question": q, "session_id": "lab1"}).json()
+    assert r["answering"] == "rules"
+    assert r["baseline"]["leaked_facts"] == ["f-reorg"]                  # 普通助手拼出了结论，由判官判定
+    assert r["butler"]["status"] == "needs_approval" and "裁撤" not in r["butler"]["text"]
+    assert client.post("/workspace/lab/compare", headers=headers("ken"), json={"question": q}).status_code == 422
+    with db.transaction() as tx:
+        assert any(e["payload"].get("lab") for e in tx.all("audit_entry"))
+    st = client.get("/workspace/status", headers=headers("ken")).json()
+    assert st["answering"] == "rules"
+
+
+def test_lab_scenarios_and_seeded_chains_follow_acl(db):
+    sc = client.get("/workspace/lab/scenarios", headers=headers("ken")).json()
+    assert {s["id"] for s in sc} >= {"c09", "reorg", "rounds"} and all(s["turns"] for s in sc)
+    with db.transaction() as tx:
+        assert tx.get("document", "lab:c09:s")["acl"] == ["leadership"]
+        f = tx.get("fact", "lab-fact:c09")
+        assert f["premises"] == ["lab:c09:0", "lab:c09:1"] and f["acl"] == ["leadership"]
+    seen = {c["id"] for c in client.get("/workspace/sources", headers=headers("ken")).json()["docs"]}
+    assert "lab:c09:0" in seen and "lab:c09:s" not in seen

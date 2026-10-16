@@ -6,5 +6,5 @@ export function backend(path: string, init?: RequestInit, identity?: string) {
   const headers = new Headers(init?.headers);
   if (process.env.BUTLER_INTERNAL_TOKEN) headers.set("authorization", `Bearer ${process.env.BUTLER_INTERNAL_TOKEN}`);
   if (identity) headers.set("x-butler-identity", identity);
-  return fetch(`${origin}${path}`, { ...init, headers, cache: "no-store", signal: AbortSignal.timeout(path === "/workspace/ask" ? 180000 : 15000) });
+  return fetch(`${origin}${path}`, { ...init, headers, cache: "no-store", signal: AbortSignal.timeout(path === "/workspace/ask" || path === "/workspace/lab/compare" ? 180000 : 15000) });
 }

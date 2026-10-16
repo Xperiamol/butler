@@ -1,5 +1,5 @@
 export type Identity = { id: string; name: string; role: string; groups: string[]; session_version?: number; username?: string | null };
-export type WorkspaceStatus = { organization: string; mode: string; auth_mode: string; database: string; model_ready: boolean; visible_documents: number; conversations: number; audit_entries: number | null; can_admin: boolean; can_audit: boolean };
+export type WorkspaceStatus = { organization: string; mode: string; answering?: "live" | "rules"; generation_model?: string; auth_mode: string; database: string; model_ready: boolean; visible_documents: number; conversations: number; audit_entries: number | null; can_admin: boolean; can_audit: boolean };
 export type WorkspaceSettings = { organization: string; generation_model: string; judge_model: string; max_tokens: number; mode: string; auth_mode: string; model_key_configured: boolean; model_base_url: string; oidc_configured: boolean; database: string };
 export type Member = Identity & { active: boolean };
 export type ConversationSummary = { id: string; title: string; updated: number; stale: boolean };
@@ -21,6 +21,9 @@ export type Approval = { id: string; user: string; fact_ids: string[]; conclusio
 export type ApprovalState = { id: string; status: "pending" | "approved" | "denied" | "expired"; expires: number | null };
 export type Stats = { by_status: Record<string, number>; series: { t: number; asks: number; blocked: number }[]; approvals: { pending: number; approved: number; denied: number }; asks: number };
 export type TamperResult = { index: number; relinked: boolean; chain_ok: boolean; first_bad_index: number | null; checkpoint_ok: boolean; checkpoint_bad_index: number | null; length: number; before: string; after: string };
+export type LabSide = { text: string; citations: Citation[]; status: AskStatus; degraded: boolean; blocked_facts: string[]; latency_ms: number; guard_ms: number; leaked_facts?: string[] };
+export type LabCompare = { baseline: LabSide; butler: LabSide; answering: "live" | "rules"; model: string };
+export type LabScenario = { id: string; name: string; blurb: string; turns: string[] };
 export type ScanResult = { flagged: boolean; score: number; rules: string[]; neutralized: boolean; preview: string };
 export type AuditRow = {
   index: number;
@@ -96,6 +99,8 @@ export const workspaceApi = {
   approval: (id: string) => call<ApprovalState>(`/workspace/approvals/${id}`),
   decide: (id: string, data: { approve: boolean; minutes: number; note?: string }) => call<ApprovalState>(`/workspace/approvals/${id}/decide`, { method: "POST", body: JSON.stringify(data) }),
   tamper: (index: number, relink: boolean) => call<TamperResult>("/workspace/lab/tamper", { method: "POST", body: JSON.stringify({ index, relink }) }),
+  labScenarios: () => call<LabScenario[]>("/workspace/lab/scenarios"),
+  labCompare: (question: string, session_id: string) => call<LabCompare>("/workspace/lab/compare", { method: "POST", body: JSON.stringify({ question, session_id }) }),
   scan: (text: string) => call<ScanResult>("/workspace/lab/scan", { method: "POST", body: JSON.stringify({ text }) }),
   cases: () => call<Cases>("/workspace/eval/cases"),
   eval: () => call<EvalReport>("/workspace/eval"),

@@ -1,58 +1,62 @@
 "use client";
 import { useRef, useState } from "react";
 import { useEffect } from "react";
-import { api, FACT_LABEL, workspaceApi, type AuditRow, type Compare, type ScanResult, type TamperResult } from "@/lib/api";
+import { FACT_LABEL, workspaceApi, type AuditRow, type LabCompare, type LabScenario, type ScanResult, type TamperResult } from "@/lib/api";
 import { PEOPLE, SCAN_PRESETS, SCENARIOS } from "@/lib/scenarios";
 import AnswerText from "./AnswerText";
 
-type Round = { question: string; result: Compare };
-const leaked = (side: { text: string }) => side.text.split("\n").some((l) => l.startsWith("综合判断"));
+type Round = { question: string; result: LabCompare };
 
-export default function LabPanel() {
+export default function LabPanel({ who, role }: { who: string; role: string }) {
   return <main className="admin-page lab-page">
-    <div className="admin-heading"><div><span className="overline">体验 / 攻防演示台</span><h1>自己动手，攻一次试试。</h1><p>下面两个台子都连着真实的守卫流程：一个演示拼图攻击，一个演示藏在资料里的提示注入。</p></div></div>
-    <AttackBench />
+    <div className="admin-heading"><div><span className="overline">体验 / 攻防演示台</span><h1>自己动手，攻一次试试。</h1><p>下面三个台子都连着工作区里真实的守卫流程：拼图攻击、藏在资料里的提示注入、审计防篡改。配置了大模型时，回答和结论判定都是真实模型。</p></div></div>
+    <AttackBench who={who} role={role} />
     <ScanBench />
     <TamperBench />
   </main>;
 }
 
-function AttackBench() {
-  const [scenario, setScenario] = useState(0), [person, setPerson] = useState(0);
+function AttackBench({ who, role }: { who: string; role: string }) {
+  const [scenarios, setScenarios] = useState<LabScenario[]>([]), [scenario, setScenario] = useState(0);
   const [rounds, setRounds] = useState<Round[]>([]);
-  const [running, setRunning] = useState(false), [error, setError] = useState(""), [finished, setFinished] = useState(false);
+  const [running, setRunning] = useState(false), [error, setError] = useState(""), [finished, setFinished] = useState(false), [pending, setPending] = useState("");
   const session = useRef("");
-  const sc = SCENARIOS[scenario], who = PEOPLE[person];
+  useEffect(() => { workspaceApi.labScenarios().then(setScenarios).catch(() => setError("读取剧本失败。")); }, []);
+  const sc = scenarios[scenario];
   const run = async () => {
-    if (running) return;
+    if (running || !sc) return;
     setRunning(true); setRounds([]); setError(""); setFinished(false); session.current = crypto.randomUUID();
     try {
       for (const question of sc.turns) {
-        const result = await api.compare(who.id, question, session.current);
+        setPending(question);
+        const result = await workspaceApi.labCompare(question, session.current);
         setRounds((r) => [...r, { question, result }]);
-        await new Promise((resolve) => setTimeout(resolve, 650));
       }
       setFinished(true);
-    } catch { setError("暂时连不上服务，请重试。"); }
-    finally { setRunning(false); }
+    } catch (e) { setError(e instanceof Error ? e.message : "暂时连不上服务，请重试。"); }
+    finally { setRunning(false); setPending(""); }
   };
-  const plainLeaks = rounds.filter((r) => leaked(r.result.baseline)).length, stopped = rounds.filter((r) => r.result.butler.degraded).length;
+  const live = rounds[0]?.result;
+  const plainLeaks = rounds.filter((r) => (r.result.baseline.leaked_facts ?? []).length > 0).length;
+  const stopped = rounds.filter((r) => r.result.butler.status === "needs_approval" || r.result.butler.degraded).length;
   return <section className="lab-bench">
     <div className="lab-head"><span className="demo-label">01 / 拼图攻击</span><h2>同一组问题，两个助手。</h2></div>
     <div className="lab-controls">
-      <div className="scenario-tabs" role="group" aria-label="攻击剧本">{SCENARIOS.map((s, i) => <button key={s.name} className={scenario === i ? "active" : ""} aria-pressed={scenario === i} disabled={running} onClick={() => { setScenario(i); setRounds([]); setFinished(false); }}><span>{s.name}</span></button>)}</div>
-      <label className="demo-reader">提问人<select value={person} disabled={running} onChange={(e) => { setPerson(Number(e.target.value)); setRounds([]); setFinished(false); }}>{PEOPLE.map((p, i) => <option value={i} key={p.id}>{p.name} · {p.role}</option>)}</select></label>
-      <button className="btn primary" disabled={running} onClick={run}>{running ? "攻击进行中…" : rounds.length ? "再来一次" : "发起攻击"}<span aria-hidden="true">→</span></button>
+      <div className="scenario-tabs wrap" role="group" aria-label="攻击剧本">{scenarios.map((s, i) => <button key={s.id} className={scenario === i ? "active" : ""} aria-pressed={scenario === i} disabled={running} onClick={() => { setScenario(i); setRounds([]); setFinished(false); }}><span>{s.name}</span></button>)}</div>
+      <button className="btn primary" disabled={running || !sc} onClick={run}>{running ? "攻击进行中…" : rounds.length ? "再来一次" : "发起攻击"}<span aria-hidden="true">→</span></button>
     </div>
-    <p className="lab-blurb">{sc.blurb}</p>
+    <p className="lab-blurb">以 <b>{who}</b>（{role}）的权限提问。{sc?.blurb} {live && <span className={`answer-source ${live.answering}`}>{live.answering === "live" ? `真实模型 · ${live.model}` : "离线规则演示（未配置模型）"}</span>}</p>
     {error && <p className="error" role="alert">{error}</p>}
-    <div className="lab-rounds">{rounds.map((r, i) => { const bad = leaked(r.result.baseline), cut = r.result.butler.degraded; return <article className="lab-round" key={i} style={{ "--i": 0 } as React.CSSProperties}>
-      <header><span>第 {i + 1} 轮 · {who.name}</span><p>{r.question}</p></header>
+    <div className="lab-rounds">{rounds.map((r, i) => { const leaks = r.result.baseline.leaked_facts ?? [], bad = leaks.length > 0, cut = r.result.butler.status === "needs_approval" || r.result.butler.degraded; return <article className="lab-round" key={i}>
+      <header><span>第 {i + 1} 轮 · {who}</span><p>{r.question}</p></header>
       <div className="lab-sides">
-        <div className={`lab-side ${bad ? "is-leak" : ""}`}><div className="lab-side-head"><b>普通助手</b><span className={`badge ${bad ? "stop" : "ok"}`}>{bad ? "拼出了结论" : "照常回答"}</span></div><AnswerText text={r.result.baseline.text} citations={r.result.baseline.citations} highlight typing /></div>
-        <div className={`lab-side guarded ${cut ? "is-cut" : ""}`}><div className="lab-side-head"><b>Butler</b><span className={`badge ${cut ? "warn" : "ok"}`}>{cut ? `拦截 · ${r.result.butler.blocked_facts.map((f) => FACT_LABEL[f] ?? f).join("、") || "受限结论"}` : "放行"}</span></div><AnswerText text={r.result.butler.text} citations={r.result.butler.citations} typing /><small className="lab-ms">检查 {r.result.butler.guard_ms.toFixed(1)} ms</small></div>
-      </div></article>; })}</div>
-    {finished && <div className="lab-verdict" role="status"><div><strong>{plainLeaks}</strong><span>轮里普通助手拼出了结论</span></div><div><strong>{stopped}</strong><span>轮里 Butler 拦住了越权推断</span></div><div><strong>{rounds.length - stopped}</strong><span>轮正常放行</span></div></div>}
+        <div className={`lab-side ${bad ? "is-leak" : ""}`}><div className="lab-side-head"><b>只查文档权限</b><span className={`badge ${bad ? "stop" : "ok"}`}>{bad ? `说出了受限结论${leaks.length ? "" : ""}` : "没有说出受限结论"}</span></div><AnswerText text={r.result.baseline.text} citations={r.result.baseline.citations} typing /><small className="lab-ms">{(r.result.baseline.latency_ms / 1000).toFixed(1)} 秒</small></div>
+        <div className={`lab-side guarded ${cut ? "is-cut" : ""}`}><div className="lab-side-head"><b>Butler</b><span className={`badge ${r.result.butler.status === "needs_approval" ? "stop" : cut ? "warn" : "ok"}`}>{r.result.butler.status === "needs_approval" ? `需要授权 · ${r.result.butler.blocked_facts.map((f) => FACT_LABEL[f] ?? "受限结论").join("、")}` : cut ? `收窄 · ${r.result.butler.blocked_facts.map((f) => FACT_LABEL[f] ?? "受限结论").join("、") || "受限结论"}` : "放行"}</span></div><AnswerText text={r.result.butler.text} citations={r.result.butler.citations} typing /><small className="lab-ms">检查 {r.result.butler.guard_ms.toFixed(0)} ms · 共 {(r.result.butler.latency_ms / 1000).toFixed(1)} 秒</small></div>
+      </div></article>; })}
+      {running && <p className="chat-pending lab-pending" role="status"><span className="spinner" />正在让两个助手同时回答：{pending}</p>}</div>
+    {finished && <div className="lab-verdict" role="status"><div><strong>{plainLeaks}</strong><span>轮里“只查文档权限”说出了受限结论</span></div><div><strong>{stopped}</strong><span>轮里 Butler 拦下或收窄</span></div><div><strong>{rounds.length - stopped}</strong><span>轮正常放行</span></div></div>}
+    {finished && plainLeaks === 0 && stopped > 0 && <p className="lab-note">这次模型没有自己拼出结论，但 Butler 仍然拦了：它依据的是“你累计拿到的资料已经凑齐了这条结论的依据”，不取决于模型这次怎么回答。</p>}
+    {finished && stopped === 0 && <p className="lab-note">这个身份有权知道这些，所以全部放行。换 Ken（外包人员）登录再试一次。</p>}
   </section>;
 }
 

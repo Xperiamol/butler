@@ -213,3 +213,10 @@ html[data-seen] .preloader { display: none; }
 
 .workspace-metrics strong span, .stat-tiles strong span, .approval-counts strong span { font: inherit; color: inherit; letter-spacing: inherit; }
 .approval-concl span small { display: block; margin-top: 4px; font-size: 10px; font-weight: 400; color: #a07a63; }
+
+.scenario-tabs.wrap { flex-wrap: wrap; gap: 8px 24px; } .lab-controls { align-items: flex-end; }
+.answer-source { display: inline-block; margin-left: 8px; padding: 3px 10px; border-radius: 99px; font: 10px var(--mono); background: #e0ecd6; color: #3b6a35; } .answer-source.rules { background: #f4e6bb; color: #7a5b10; }
+.lab-pending { margin: 4px 0; } .lab-note { margin: 14px 0 0; padding: 14px 18px; border-left: 3px solid #7e9970; background: #eef3e8; font-size: 12px; line-height: 1.9; color: #4d5c43; animation: enter .5s var(--ease) both; }
+
+.model-chip { margin-left: 12px; padding: 3px 10px; border-radius: 99px; background: #e0ecd6; color: #3b6a35; font: 600 10px var(--mono); font-style: normal; animation: pop .4s var(--ease) both; } .model-chip.rules { background: #f4e6bb; color: #7a5b10; }
+.demo-note { font-size: 11px; color: #7b866e; max-width: 340px; text-align: right; line-height: 1.7; }

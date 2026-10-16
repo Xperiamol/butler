@@ -7,8 +7,8 @@ async function handle(request: Request, context: { params: Promise<{ path: strin
   if (!who) return Response.json({ error: "请先登录。" }, { status: 401 });
   const path = (await context.params).path.join("/");
   const method = request.method;
-  const allowed = method === "GET" ? /^(me|status|sources|settings|members|knowledge|conversations(?:\/[\w-]+)?|audit(?:\/verify)?|eval(?:\/cases)?|stats|approvals(?:\/[\w-]+)?)$/ :
-    method === "PUT" ? /^(settings|members\/[\w-]+(?:\/password)?|account\/password)$/ : /^(ask|knowledge\/import|members|lab\/scan|lab\/tamper|approvals\/[\w-]+\/decide)$/;
+  const allowed = method === "GET" ? /^(me|status|sources|settings|members|knowledge|conversations(?:\/[\w-]+)?|audit(?:\/verify)?|eval(?:\/cases)?|stats|lab\/scenarios|approvals(?:\/[\w-]+)?)$/ :
+    method === "PUT" ? /^(settings|members\/[\w-]+(?:\/password)?|account\/password)$/ : /^(ask|knowledge\/import|members|lab\/scan|lab\/tamper|lab\/compare|approvals\/[\w-]+\/decide)$/;
   if (!allowed.test(path)) return Response.json({ error: "接口不存在。" }, { status: 404 });
   if ((/^(settings|members|knowledge)/.test(path) || path === "approvals" || /^approvals\/[\w-]+\/decide$/.test(path)) && !["admin", "security"].includes(who.role)) return Response.json({ error: "需要管理员权限。" }, { status: 403 });
   if ((/^(audit|eval|stats)/.test(path) || path === "lab/tamper") && !["admin", "security", "auditor"].includes(who.role)) return Response.json({ error: "需要审计权限。" }, { status: 403 });
